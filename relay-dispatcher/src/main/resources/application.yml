@@ -1,0 +1,100 @@
+server:
+  port: 8081
+  shutdown: graceful
+
+spring:
+  application:
+    name: relay-dispatcher
+  threads:
+    virtual:
+      enabled: ${VIRTUAL_THREADS_ENABLED:true}
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/relay}
+    username: ${DB_USER:relay}
+    password: ${DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:30}
+      connection-timeout: 10000
+  flyway:
+    # relay-api owns migrations; the dispatcher only reads and writes rows.
+    enabled: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
+    consumer:
+      group-id: relay-dispatcher
+      auto-offset-reset: earliest
+      max-poll-records: ${KAFKA_MAX_POLL_RECORDS:100}
+      properties:
+        partition.assignment.strategy: org.apache.kafka.clients.consumer.CooperativeStickyAssignor
+        max.poll.interval.ms: 600000
+    producer:
+      acks: all
+      properties:
+        enable.idempotence: true
+        linger.ms: 5
+        max.block.ms: 10000
+    listener:
+      observation-enabled: true
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+relay:
+  crypto:
+    key: ${RELAY_SECRET_KEY:}
+    key-id: ${RELAY_SECRET_KEY_ID:k1}
+  endpoints:
+    allow-private-networks: ${RELAY_ALLOW_PRIVATE_NETWORKS:false}
+  dispatcher:
+    concurrency: ${RELAY_DISPATCHER_CONCURRENCY:4}
+    executor: ${RELAY_DISPATCHER_EXECUTOR:virtual}
+    platform-pool-size: ${RELAY_DISPATCHER_PLATFORM_POOL_SIZE:200}
+    connect-timeout: ${RELAY_CONNECT_TIMEOUT:2s}
+    request-timeout: ${RELAY_REQUEST_TIMEOUT:10s}
+  retry:
+    attempts: ${RELAY_RETRY_ATTEMPTS:6}
+    initial-delay: ${RELAY_RETRY_INITIAL_DELAY:1s}
+    multiplier: ${RELAY_RETRY_MULTIPLIER:5}
+    max-delay: ${RELAY_RETRY_MAX_DELAY:10m}
+    jitter: ${RELAY_RETRY_JITTER:0.2}
+  kafka:
+    partitions: ${RELAY_KAFKA_PARTITIONS:12}
+
+management:
+  otlp:
+    metrics:
+      export:
+        # Metrics are scraped by Prometheus from /actuator/prometheus; no OTLP push.
+        enabled: false
+  logging:
+    export:
+      otlp:
+        enabled: false
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  tracing:
+    export:
+      otlp:
+        # Off by default so a laptop without a collector does not log export errors. Compose turns it on.
+        enabled: ${OTLP_TRACING_ENABLED:false}
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  level:
+    # Spring Kafka 4.1 composes DLPR header functions via setHeadersFunction, which warns on every
+    # retry topic at startup even though both functions stay in place (verified by DeliveryFlowTest).
+    org.springframework.kafka.listener.DeadLetterRecordManager: error
