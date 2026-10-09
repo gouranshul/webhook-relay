@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and test (Java 25)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+      - name: Verify (unit, integration, chaos tests; JaCoCo gate >= 80% on relay-common and relay-dispatcher)
+        run: ./mvnw -B -ntp verify
+      - name: Coverage summary
+        if: always()
+        run: |
+          {
+            echo "| Module | Line coverage | Branch coverage |"
+            echo "|---|---|---|"
+            for m in relay-common relay-api relay-dispatcher mock-receiver; do
+              f=$m/target/site/jacoco/jacoco.csv
+              [ -f "$f" ] && awk -F, -v m=$m 'NR>1 {lm+=$8; lc+=$9; bm+=$6; bc+=$7} END {printf "| %s | %.1f%% | %.1f%% |\n", m, 100*lc/(lc+lm), 100*bc/(bc+bm)}' "$f"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload test and coverage reports
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: reports
+          path: |
+            **/target/surefire-reports/*.txt
+            **/target/site/jacoco/
+          retention-days: 7
+
+  helm:
+    name: Helm lint and template
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: azure/setup-helm@v5.0.1
+        with:
+          version: v4.3.0
+      - run: helm lint deploy/helm/webhook-relay --strict --set secrets.existingSecret=relay
+      - name: Render with KEDA (default)
+        run: helm template ci deploy/helm/webhook-relay --set secrets.existingSecret=relay | grep -q "kind: ScaledObject"
+      - name: Render with the HPA fallback
+        run: helm template ci deploy/helm/webhook-relay --set secrets.existingSecret=relay --set autoscaling.keda.enabled=false --set autoscaling.hpa.enabled=true | grep -q "kind: HorizontalPodAutoscaler"
+
+  gitleaks:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - name: gitleaks (full history)
+        run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 git /repo --redact --verbose
+
+  images:
+    name: Docker images
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: [relay-api, relay-dispatcher, mock-receiver]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: docker/setup-buildx-action@v4.4.1
+      - uses: docker/build-push-action@v7.4.0
+        with:
+          context: .
+          build-args: MODULE=${{ matrix.module }}
+          tags: webhook-relay/${{ matrix.module }}:ci
+          push: false
+          cache-from: type=gha,scope=${{ matrix.module }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.module }}
