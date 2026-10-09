@@ -15,6 +15,8 @@ set -a; . ./.env; set +a
 
 export RATE=${RATE:-200} RAMP=${RAMP:-30s} HOLD=${HOLD:-3m} ENDPOINTS_PER_TYPE=${ENDPOINTS_PER_TYPE:-4}
 export TRACING_SAMPLING_PROBABILITY=${TRACING_SAMPLING_PROBABILITY:-0.01}
+# Caps the retry tail so a run drains in minutes rather than the default 10 min max delay.
+export RELAY_RETRY_MAX_DELAY=${RELAY_RETRY_MAX_DELAY:-2m}
 OUT=load/results
 mkdir -p "$OUT"
 
@@ -46,7 +48,8 @@ trap 'kill $SAMPLER 2>/dev/null || true' EXIT
 echo "== $NAME: k6 (rate=$RATE/s ramp=$RAMP hold=$HOLD)"
 START=$(date +%s)
 K6_STATUS=0
-docker run --rm --network webhook-relay_default -v "$PWD/load:/scripts" \
+HOST_DIR=$( (pwd -W) 2>/dev/null || pwd )   # Windows Git Bash needs a native path for the bind mount
+MSYS_NO_PATHCONV=1 docker run --rm --network webhook-relay_default -v "$HOST_DIR/load:/scripts" \
   -e TOKEN="$RELAY_API_TOKEN" -e RATE -e RAMP -e HOLD -e ENDPOINTS_PER_TYPE -e RUN_NAME="$NAME" \
   grafana/k6:2.3.0 run --quiet /scripts/ingest.js | tee "$OUT/$NAME-k6.txt" || K6_STATUS=$?
 END=$(date +%s)
@@ -72,7 +75,8 @@ RANGE="$((DRAINED - START + 60))s"
   echo
   echo "- Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "- Settings: RATE=$RATE/s RAMP=$RAMP HOLD=$HOLD ENDPOINTS_PER_TYPE=$ENDPOINTS_PER_TYPE (3 event types)"
-  echo "- Dispatcher: VIRTUAL_THREADS_ENABLED=${VIRTUAL_THREADS_ENABLED:-true} EXECUTOR=${RELAY_DISPATCHER_EXECUTOR:-virtual} PLATFORM_POOL=${RELAY_DISPATCHER_PLATFORM_POOL_SIZE:-200} BULKHEAD=${RELAY_BULKHEAD_PER_ENDPOINT:-10}"
+  echo "- Retry max delay: $RELAY_RETRY_MAX_DELAY"
+  echo "- Dispatcher: VIRTUAL_THREADS_ENABLED=${VIRTUAL_THREADS_ENABLED:-true} EXECUTOR=${RELAY_DISPATCHER_EXECUTOR:-virtual} PLATFORM_POOL=${RELAY_DISPATCHER_PLATFORM_POOL_SIZE:-200} BULKHEAD=${RELAY_BULKHEAD_PER_ENDPOINT:-50}"
   echo "- Receiver: failure rate ${RECEIVER_FAILURE_RATE:-0.10}, latency ${RECEIVER_MIN_LATENCY_MS:-50}-${RECEIVER_MAX_LATENCY_MS:-200} ms"
   echo "- k6 exit code: $K6_STATUS (non-zero means a threshold failed)"
   echo "- Drain after load: $((DRAINED - END)) s"
