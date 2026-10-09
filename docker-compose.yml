@@ -81,6 +81,73 @@ services:
       timeout: 3s
       retries: 30
 
+  relay-api:
+    <<: *java-service
+    build:
+      context: .
+      args:
+        MODULE: relay-api
+    image: webhook-relay/relay-api:local
+    ports:
+      - "8080:8080"
+    environment: &relay-env
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-relay}
+      DB_USER: ${POSTGRES_USER:-relay}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      RELAY_SECRET_KEY: ${RELAY_SECRET_KEY:?set RELAY_SECRET_KEY in .env}
+      RELAY_API_TOKEN: ${RELAY_API_TOKEN:?set RELAY_API_TOKEN in .env}
+      # The mock receiver lives on the compose network, which is private address space.
+      RELAY_ALLOW_PRIVATE_NETWORKS: "true"
+      OTLP_TRACING_ENABLED: "true"
+      OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
+      JAVA_TOOL_OPTIONS: ${API_JAVA_OPTS:--XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health/readiness | grep -q UP"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+
+  relay-dispatcher:
+    <<: *java-service
+    build:
+      context: .
+      args:
+        MODULE: relay-dispatcher
+    image: webhook-relay/relay-dispatcher:local
+    ports:
+      - "8081:8081"
+    environment:
+      <<: *relay-env
+      VIRTUAL_THREADS_ENABLED: ${VIRTUAL_THREADS_ENABLED:-true}
+      RELAY_DISPATCHER_EXECUTOR: ${RELAY_DISPATCHER_EXECUTOR:-virtual}
+      RELAY_DISPATCHER_PLATFORM_POOL_SIZE: ${RELAY_DISPATCHER_PLATFORM_POOL_SIZE:-200}
+      RELAY_DISPATCHER_CONCURRENCY: ${RELAY_DISPATCHER_CONCURRENCY:-4}
+      JAVA_TOOL_OPTIONS: ${DISPATCHER_JAVA_OPTS:--XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError}
+    depends_on:
+      relay-api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mock-receiver:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health/readiness | grep -q UP"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+
+  jaeger:
+    image: jaegertracing/jaeger:2.22.0
+    ports:
+      - "16686:16686"
+
   prometheus:
     image: prom/prometheus:v3.15.0
     ports:

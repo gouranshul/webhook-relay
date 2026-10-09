@@ -14,7 +14,7 @@ COPY relay-api/src relay-api/src
 COPY relay-dispatcher/src relay-dispatcher/src
 COPY mock-receiver/src mock-receiver/src
 RUN --mount=type=cache,target=/root/.m2 \
-    ./mvnw -q -B -pl ${MODULE} -am package -Dmaven.test.skip=true -Djacoco.skip=true \
+    ./mvnw -q -B -pl ${MODULE} -am package -DskipTests -Djacoco.skip=true \
  && cp ${MODULE}/target/${MODULE}-*-exec.jar /app.jar \
  && java -Djarmode=tools -jar /app.jar extract --layers --launcher --destination /layers
 
