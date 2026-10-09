@@ -1,13 +1,17 @@
 package io.github.gouranshul.webhookrelay.api.event;
 
+import io.github.gouranshul.webhookrelay.api.delivery.DeliveryService;
 import io.github.gouranshul.webhookrelay.api.event.EventDtos.EventAccepted;
 import io.github.gouranshul.webhookrelay.api.event.EventDtos.PublishEventRequest;
 import io.github.gouranshul.webhookrelay.api.tracing.TraceContext;
 import io.github.gouranshul.webhookrelay.api.web.ApiException;
 import jakarta.validation.Valid;
 import java.net.URI;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -23,10 +27,19 @@ public class EventController {
 
     private final EventService service;
     private final TraceContext traceContext;
+    private final DeliveryService deliveries;
 
-    public EventController(EventService service, TraceContext traceContext) {
+    public EventController(EventService service, TraceContext traceContext,
+            DeliveryService deliveries) {
         this.service = service;
         this.traceContext = traceContext;
+        this.deliveries = deliveries;
+    }
+
+    /** The event and its deliveries (first 200), one per subscribed endpoint plus any replays. */
+    @GetMapping("/{id}")
+    public EventDtos.EventView get(@PathVariable UUID id) {
+        return service.get(id, deliveries.list(null, null, id, null, 200).data());
     }
 
     /**

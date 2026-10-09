@@ -3,12 +3,16 @@ package io.github.gouranshul.webhookrelay.api.event;
 import io.github.gouranshul.webhookrelay.common.model.OutboxShards;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class EventRepository {
+
+    public record StoredEvent(UUID id, String type, String payload, Instant createdAt) {
+    }
 
     private final JdbcClient jdbc;
 
@@ -25,6 +29,14 @@ public class EventRepository {
                 .query(Timestamp.class)
                 .single()
                 .toInstant();
+    }
+
+    public Optional<StoredEvent> find(UUID id) {
+        return jdbc.sql("SELECT id, event_type, payload::text, created_at FROM events WHERE id = ?")
+                .param(id)
+                .query((rs, n) -> new StoredEvent(rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3),
+                        rs.getTimestamp(4).toInstant()))
+                .optional();
     }
 
     /**
