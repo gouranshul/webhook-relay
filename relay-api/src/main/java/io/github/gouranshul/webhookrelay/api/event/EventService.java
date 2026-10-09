@@ -1,6 +1,7 @@
 package io.github.gouranshul.webhookrelay.api.event;
 
 import io.github.gouranshul.webhookrelay.api.config.RelayApiProperties;
+import io.github.gouranshul.webhookrelay.api.delivery.DeliveryDtos.DeliverySummary;
 import io.github.gouranshul.webhookrelay.api.event.EventDtos.EventAccepted;
 import io.github.gouranshul.webhookrelay.api.event.EventDtos.PublishEventRequest;
 import io.github.gouranshul.webhookrelay.api.event.IdempotencyRepository.StoredResponse;
@@ -10,6 +11,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -37,6 +39,13 @@ public class EventService {
         this.idempotency = idempotency;
         this.mapper = mapper;
         this.properties = properties;
+    }
+
+    @Transactional(readOnly = true)
+    public EventDtos.EventView get(UUID id, List<DeliverySummary> deliveries) {
+        EventRepository.StoredEvent event = events.find(id).orElseThrow(() -> ApiException.notFound("Event", id));
+        return new EventDtos.EventView(event.id(), event.type(), mapper.readTree(event.payload()), event.createdAt(),
+                deliveries);
     }
 
     @Transactional
