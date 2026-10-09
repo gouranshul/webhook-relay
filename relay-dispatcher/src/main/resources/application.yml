@@ -18,6 +18,12 @@ spring:
   flyway:
     # relay-api owns migrations; the dispatcher only reads and writes rows.
     enabled: false
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 500ms
+      connect-timeout: 1s
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
     consumer:
@@ -56,6 +62,11 @@ relay:
     multiplier: ${RELAY_RETRY_MULTIPLIER:5}
     max-delay: ${RELAY_RETRY_MAX_DELAY:10m}
     jitter: ${RELAY_RETRY_JITTER:0.2}
+  resilience:
+    handoff-after: ${RELAY_HANDOFF_AFTER:500ms}
+    max-in-flight: ${RELAY_MAX_IN_FLIGHT:2000}
+    bulkhead-per-endpoint: ${RELAY_BULKHEAD_PER_ENDPOINT:10}
+    rate-limit-enabled: ${RELAY_RATE_LIMIT_ENABLED:true}
   kafka:
     partitions: ${RELAY_KAFKA_PARTITIONS:12}
 

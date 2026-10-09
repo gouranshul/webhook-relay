@@ -43,12 +43,18 @@ public class DeliveryRepository {
                 .orElse(OptionalInt.empty());
     }
 
-    public Optional<DeliveryStatus> status(UUID deliveryId) {
-        return jdbc.sql("SELECT status FROM deliveries WHERE id = ?")
+    /** Current status and, while IN_FLIGHT, how long the lease has left. */
+    public record State(DeliveryStatus status, Duration leaseRemaining) {
+    }
+
+    public Optional<State> state(UUID deliveryId) {
+        return jdbc.sql("""
+                        SELECT status, GREATEST(0, EXTRACT(EPOCH FROM (lease_until - now())) * 1000)::bigint AS lease_ms
+                          FROM deliveries WHERE id = ?""")
                 .param(deliveryId)
-                .query(String.class)
-                .optional()
-                .map(DeliveryStatus::valueOf);
+                .query((rs, n) -> new State(DeliveryStatus.valueOf(rs.getString("status")),
+                        Duration.ofMillis(rs.getLong("lease_ms"))))
+                .optional();
     }
 
     /** Records the attempt and moves the delivery to its next state, in one transaction. */
