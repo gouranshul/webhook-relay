@@ -56,13 +56,13 @@ public class DeliveryListener {
             topicSuffixingStrategy = TopicSuffixingStrategy.SUFFIX_WITH_INDEX_VALUE,
             sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.MULTIPLE_TOPICS,
             dltStrategy = DltStrategy.ALWAYS_RETRY_ON_ERROR,
-            numPartitions = "${relay.kafka.partitions:12}",
+            numPartitions = "${relay.kafka.retry-partitions:12}",
             replicationFactor = "${relay.kafka.replication-factor:1}",
-            concurrency = "${relay.dispatcher.concurrency:4}")
+            concurrency = "${relay.dispatcher.retry-concurrency:2}")
     @KafkaListener(id = "webhook-dispatcher", topics = Topics.DELIVERIES,
-            concurrency = "${relay.dispatcher.concurrency:4}")
+            concurrency = "${relay.dispatcher.concurrency:16}")
     public void onDelivery(ConsumerRecord<String, String> record) {
-        processor.process(decode(record));
+        processor.process(record, decode(record));
     }
 
     @DltHandler

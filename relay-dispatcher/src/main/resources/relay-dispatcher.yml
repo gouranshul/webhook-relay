@@ -15,6 +15,10 @@ spring:
     hikari:
       maximum-pool-size: ${DB_POOL_SIZE:30}
       connection-timeout: 10000
+      data-source-properties:
+        # pgjdbc: never wait forever on a hung connection or query (seconds).
+        connectTimeout: 5
+        socketTimeout: 30
   flyway:
     # relay-api owns migrations; the dispatcher only reads and writes rows.
     enabled: false
@@ -40,6 +44,9 @@ spring:
         enable.idempotence: true
         linger.ms: 5
         max.block.ms: 10000
+        request.timeout.ms: 10000
+        # Bounds how long an attempt waits to forward its record to a retry topic before the lease takes over.
+        delivery.timeout.ms: 30000
     listener:
       observation-enabled: true
   lifecycle:
@@ -52,7 +59,8 @@ relay:
   endpoints:
     allow-private-networks: ${RELAY_ALLOW_PRIVATE_NETWORKS:false}
   dispatcher:
-    concurrency: ${RELAY_DISPATCHER_CONCURRENCY:4}
+    concurrency: ${RELAY_DISPATCHER_CONCURRENCY:16}
+    retry-concurrency: ${RELAY_DISPATCHER_RETRY_CONCURRENCY:2}
     executor: ${RELAY_DISPATCHER_EXECUTOR:virtual}
     platform-pool-size: ${RELAY_DISPATCHER_PLATFORM_POOL_SIZE:200}
     connect-timeout: ${RELAY_CONNECT_TIMEOUT:2s}
@@ -64,14 +72,13 @@ relay:
     max-delay: ${RELAY_RETRY_MAX_DELAY:10m}
     jitter: ${RELAY_RETRY_JITTER:0.2}
   resilience:
-    handoff-after: ${RELAY_HANDOFF_AFTER:500ms}
     max-in-flight: ${RELAY_MAX_IN_FLIGHT:2000}
-    bulkhead-per-endpoint: ${RELAY_BULKHEAD_PER_ENDPOINT:10}
+    bulkhead-per-endpoint: ${RELAY_BULKHEAD_PER_ENDPOINT:50}
     rate-limit-enabled: ${RELAY_RATE_LIMIT_ENABLED:true}
   auto-pause:
     consecutive-dlt: ${RELAY_AUTO_PAUSE_CONSECUTIVE_DLT:10}
   kafka:
-    partitions: ${RELAY_KAFKA_PARTITIONS:12}
+    partitions: ${RELAY_KAFKA_PARTITIONS:48}
 
 management:
   otlp:
@@ -91,7 +98,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus,metrics
+        include: health,info,prometheus
   endpoint:
     health:
       probes:

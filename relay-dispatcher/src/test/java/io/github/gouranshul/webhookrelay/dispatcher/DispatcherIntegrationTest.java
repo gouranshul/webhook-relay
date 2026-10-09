@@ -45,14 +45,16 @@ import tools.jackson.databind.ObjectMapper;
     "relay.dispatcher.connect-timeout=1s",
     "relay.dispatcher.request-timeout=1s",
     "relay.dispatcher.lease-margin=1s",
+    "relay.dispatcher.lease-sweep-interval=2s",
     "relay.retry.attempts=4",
     "relay.retry.initial-delay=300ms",
     "relay.retry.multiplier=2",
     "relay.retry.max-delay=2s",
     "relay.retry.jitter=0.2",
-    "relay.resilience.handoff-after=2s",
     "relay.resilience.rate-limit-max-wait=2s",
-    "relay.kafka.partitions=3"
+    "relay.kafka.partitions=3",
+    "relay.kafka.retry-partitions=3",
+    "relay.dispatcher.retry-concurrency=2"
 })
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 public abstract class DispatcherIntegrationTest {

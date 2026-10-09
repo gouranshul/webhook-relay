@@ -8,6 +8,8 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
@@ -40,6 +42,15 @@ public class RedisRateLimiter {
                 .register(registry);
         this.errors = Counter.builder("webhook.ratelimit.errors").description("Redis errors (failed open)")
                 .register(registry);
+    }
+
+    /**
+     * Opens the Redis connection and loads the script at startup, so the first deliveries do not each wait ~1 s
+     * for lazy initialisation (long enough to be handed off in the isolation test).
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void warmUp() {
+        tryAcquire(new UUID(0, 0), 1);
     }
 
     /** Takes a token if one is available now; otherwise returns the wait in ms. Never throws. */

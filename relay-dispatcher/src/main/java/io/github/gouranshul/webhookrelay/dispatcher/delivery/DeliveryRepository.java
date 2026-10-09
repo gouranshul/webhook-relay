@@ -57,9 +57,13 @@ public class DeliveryRepository {
                 .optional();
     }
 
-    /** Records the attempt and moves the delivery to its next state, in one transaction. */
+    /**
+     * Records the attempt and moves the delivery to its next state, in one transaction. A retryable outcome only
+     * leaves IN_FLIGHT once its retry record is safely on Kafka ({@code retryScheduled}); otherwise the lease is
+     * kept so the lease sweeper re-enqueues it.
+     */
     @Transactional
-    public void recordAttempt(UUID deliveryId, UUID endpointId, int attempt, HttpOutcome outcome) {
+    public void recordAttempt(UUID deliveryId, UUID endpointId, int attempt, HttpOutcome outcome, boolean retryScheduled) {
         jdbc.sql("""
                         INSERT INTO delivery_attempts (delivery_id, attempt_number, outcome, status_code, latency_ms, error)
                         VALUES (?, ?, ?, ?, ?, ?)""")
@@ -90,10 +94,11 @@ public class DeliveryRepository {
                     .update();
             default -> jdbc.sql("""
                             UPDATE deliveries
-                               SET status = 'RETRYING', last_status_code = ?, last_error = ?, lease_until = NULL,
-                                   updated_at = now()
+                               SET status = CASE WHEN ? THEN 'RETRYING' ELSE status END,
+                                   lease_until = CASE WHEN ? THEN NULL ELSE lease_until END,
+                                   last_status_code = ?, last_error = ?, updated_at = now()
                              WHERE id = ? AND status = 'IN_FLIGHT'""")
-                    .params(outcome.statusCode(), outcome.error(), deliveryId)
+                    .params(retryScheduled, retryScheduled, outcome.statusCode(), outcome.error(), deliveryId)
                     .update();
         }
     }
