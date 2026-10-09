@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "webhook-relay.fullname" . }}-config
+  labels:
+    {{- include "webhook-relay.labels" . | nindent 4 }}
+data:
+  DB_URL: {{ .Values.config.dbUrl | quote }}
+  DB_USER: {{ .Values.config.dbUser | quote }}
+  KAFKA_BOOTSTRAP_SERVERS: {{ .Values.config.kafkaBootstrapServers | quote }}
+  REDIS_HOST: {{ .Values.config.redisHost | quote }}
+  REDIS_PORT: {{ .Values.config.redisPort | quote }}
+  RELAY_KAFKA_PARTITIONS: {{ .Values.config.kafkaPartitions | quote }}
+  RELAY_ALLOW_PRIVATE_NETWORKS: {{ .Values.config.allowPrivateNetworks | quote }}
+  TRACING_SAMPLING_PROBABILITY: {{ .Values.config.tracingSamplingProbability | quote }}
+  OTLP_TRACING_ENABLED: {{ .Values.config.otlpTracingEnabled | quote }}
+  {{- with .Values.config.otlpTracesEndpoint }}
+  OTLP_TRACES_ENDPOINT: {{ . | quote }}
+  {{- end }}

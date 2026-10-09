@@ -1,0 +1,116 @@
+# Default values for webhook-relay.
+# Postgres, Kafka and Redis are external dependencies: point the chart at them below.
+
+image:
+  registry: ghcr.io/gouranshul
+  tag: ""            # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# Non-secret configuration shared by both workloads (rendered into a ConfigMap).
+config:
+  dbUrl: jdbc:postgresql://postgres:5432/relay
+  dbUser: relay
+  kafkaBootstrapServers: kafka:9092
+  redisHost: redis
+  redisPort: "6379"
+  kafkaPartitions: "48"
+  # Only for local clusters where receivers live on private addresses. Keep false in production (SSRF guard).
+  allowPrivateNetworks: "false"
+  tracingSamplingProbability: "0.1"
+  otlpTracingEnabled: "false"
+  otlpTracesEndpoint: ""
+
+# Secrets. Either reference an existing Secret (recommended) or let the chart create one (dev clusters only).
+secrets:
+  existingSecret: ""          # must contain RELAY_SECRET_KEY, RELAY_API_TOKEN, DB_PASSWORD
+  create: false
+  values:
+    RELAY_SECRET_KEY: ""      # base64 of 32 random bytes: openssl rand -base64 32
+    RELAY_API_TOKEN: ""
+    DB_PASSWORD: ""
+
+serviceAccount:
+  create: true
+  name: ""
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+api:
+  replicaCount: 2
+  javaOpts: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+  outboxWorkers: "2"
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 768Mi
+  pdb:
+    enabled: true
+    minAvailable: 1
+  extraEnv: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+dispatcher:
+  replicaCount: 2
+  javaOpts: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+  # Consumers per pod for the main topic. Pods x concurrency beyond the partition count (config.kafkaPartitions)
+  # leaves consumers idle, so maxReplicas x concurrency should not exceed it.
+  concurrency: "6"
+  retryConcurrency: "2"
+  bulkheadPerEndpoint: "50"
+  requestTimeout: 10s
+  virtualThreads: "true"
+  service:
+    port: 8081
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+  pdb:
+    enabled: true
+    minAvailable: 1
+  extraEnv: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Autoscaling for the dispatcher. KEDA scales on Kafka consumer-group lag (what actually measures "behind").
+# If KEDA is not installed, enable the CPU-based HPA instead. Never enable both.
+autoscaling:
+  keda:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 8
+    # Lag per replica that triggers a scale-out.
+    lagThreshold: "200"
+    pollingInterval: 15
+    cooldownPeriod: 120
+    # Consumer group = the @KafkaListener id.
+    consumerGroup: webhook-dispatcher
+    topic: webhook.deliveries
+  hpa:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70

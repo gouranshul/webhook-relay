@@ -1,0 +1,115 @@
+{{- $component := dict "root" . "component" "dispatcher" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "webhook-relay.fullname" . }}-dispatcher
+  labels:
+    {{- include "webhook-relay.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dispatcher
+spec:
+  {{- if not (or .Values.autoscaling.keda.enabled .Values.autoscaling.hpa.enabled) }}
+  replicas: {{ .Values.dispatcher.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "webhook-relay.selectorLabels" $component | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "webhook-relay.selectorLabels" $component | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+        prometheus.io/path: /actuator/prometheus
+    spec:
+      serviceAccountName: {{ include "webhook-relay.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      # In-flight attempts finish (or their leases expire and are swept) within the request timeout.
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: dispatcher
+          image: {{ include "webhook-relay.image" (dict "root" . "name" "relay-dispatcher") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8081
+          envFrom:
+            - configMapRef:
+                name: {{ include "webhook-relay.fullname" . }}-config
+          env:
+            {{- include "webhook-relay.commonEnv" . | nindent 12 }}
+            - name: RELAY_DISPATCHER_CONCURRENCY
+              value: {{ .Values.dispatcher.concurrency | quote }}
+            - name: RELAY_DISPATCHER_RETRY_CONCURRENCY
+              value: {{ .Values.dispatcher.retryConcurrency | quote }}
+            - name: RELAY_BULKHEAD_PER_ENDPOINT
+              value: {{ .Values.dispatcher.bulkheadPerEndpoint | quote }}
+            - name: RELAY_REQUEST_TIMEOUT
+              value: {{ .Values.dispatcher.requestTimeout | quote }}
+            - name: VIRTUAL_THREADS_ENABLED
+              value: {{ .Values.dispatcher.virtualThreads | quote }}
+            - name: JAVA_TOOL_OPTIONS
+              value: {{ .Values.dispatcher.javaOpts | quote }}
+            {{- with .Values.dispatcher.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- include "webhook-relay.probes" . | nindent 10 }}
+          resources:
+            {{- toYaml .Values.dispatcher.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.dispatcher.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.dispatcher.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.dispatcher.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "webhook-relay.fullname" . }}-dispatcher
+  labels:
+    {{- include "webhook-relay.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dispatcher
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "webhook-relay.selectorLabels" $component | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.dispatcher.service.port }}
+      targetPort: http
+{{- if .Values.dispatcher.pdb.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "webhook-relay.fullname" . }}-dispatcher
+  labels:
+    {{- include "webhook-relay.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.dispatcher.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "webhook-relay.selectorLabels" $component | nindent 6 }}
+{{- end }}

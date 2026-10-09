@@ -1,0 +1,52 @@
+{{- if and .Values.autoscaling.keda.enabled .Values.autoscaling.hpa.enabled }}
+{{- fail "Enable either autoscaling.keda or autoscaling.hpa, not both: they would fight over the replica count" }}
+{{- end }}
+{{- if .Values.autoscaling.keda.enabled }}
+# Scales the dispatcher on Kafka consumer-group lag. Lag is the signal that matters for a queue consumer: CPU
+# stays low while the dispatcher waits on slow receivers, yet work piles up. Requires KEDA (keda.sh) installed.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "webhook-relay.fullname" . }}-dispatcher
+  labels:
+    {{- include "webhook-relay.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ include "webhook-relay.fullname" . }}-dispatcher
+  minReplicaCount: {{ .Values.autoscaling.keda.minReplicas }}
+  maxReplicaCount: {{ .Values.autoscaling.keda.maxReplicas }}
+  pollingInterval: {{ .Values.autoscaling.keda.pollingInterval }}
+  cooldownPeriod: {{ .Values.autoscaling.keda.cooldownPeriod }}
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: {{ .Values.config.kafkaBootstrapServers | quote }}
+        consumerGroup: {{ .Values.autoscaling.keda.consumerGroup | quote }}
+        topic: {{ .Values.autoscaling.keda.topic | quote }}
+        lagThreshold: {{ .Values.autoscaling.keda.lagThreshold | quote }}
+        offsetResetPolicy: earliest
+        # Do not scale beyond the number of partitions with lag; extra consumers would sit idle.
+        allowIdleConsumers: "false"
+{{- else if .Values.autoscaling.hpa.enabled }}
+# Fallback when KEDA is not available: CPU-based. Less accurate for this workload (see ADR 0006).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "webhook-relay.fullname" . }}-dispatcher
+  labels:
+    {{- include "webhook-relay.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "webhook-relay.fullname" . }}-dispatcher
+  minReplicas: {{ .Values.autoscaling.hpa.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.hpa.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.hpa.targetCPUUtilizationPercentage }}
+{{- end }}
