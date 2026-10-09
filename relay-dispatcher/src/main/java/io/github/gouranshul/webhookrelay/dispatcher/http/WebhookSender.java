@@ -37,14 +37,17 @@ public class WebhookSender {
     private final int errorBodyLimit;
     private final Clock clock;
 
+    /** @param executor for the client's internal async work; null for the JDK default. Never a bounded pool shared with callers. */
     public WebhookSender(DispatcherProperties.Dispatcher config, EndpointUrlPolicy urlPolicy, Executor executor,
             Clock clock) {
-        this.client = HttpClient.newBuilder()
+        HttpClient.Builder builder = HttpClient.newBuilder()
                 .connectTimeout(config.connectTimeout())
                 .followRedirects(HttpClient.Redirect.NEVER)
-                .version(HttpClient.Version.HTTP_1_1)
-                .executor(executor)
-                .build();
+                .version(HttpClient.Version.HTTP_1_1);
+        if (executor != null) {
+            builder.executor(executor);
+        }
+        this.client = builder.build();
         this.urlPolicy = urlPolicy;
         this.requestTimeout = config.requestTimeout();
         this.errorBodyLimit = config.errorBodyLimit();
