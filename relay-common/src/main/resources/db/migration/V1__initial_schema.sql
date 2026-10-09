@@ -77,6 +77,9 @@ CREATE TABLE outbox (
 CREATE INDEX outbox_unpublished_idx ON outbox (shard, id) WHERE published_at IS NULL;
 CREATE INDEX outbox_published_at_idx ON outbox (published_at) WHERE published_at IS NOT NULL;
 
+-- High-churn queue table: vacuum early so dead tuples do not bloat the partial index the relay scans.
+ALTER TABLE outbox SET (autovacuum_vacuum_scale_factor = 0.01, autovacuum_analyze_scale_factor = 0.02);
+
 CREATE TABLE delivery_attempts (
     id             bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     delivery_id    uuid        NOT NULL REFERENCES deliveries (id),
