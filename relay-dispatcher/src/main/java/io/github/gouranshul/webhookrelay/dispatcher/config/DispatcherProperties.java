@@ -11,7 +11,12 @@ public record DispatcherProperties(
         @DefaultValue Dispatcher dispatcher,
         @DefaultValue Retry retry,
         @DefaultValue Resilience resilience,
+        @DefaultValue AutoPause autoPause,
         @DefaultValue Kafka kafka) {
+
+    /** Pause an endpoint after this many consecutive deliveries reach the DLT. 0 disables. */
+    public record AutoPause(@DefaultValue("10") int consecutiveDlt) {
+    }
 
     /**
      * Per-endpoint isolation. See docs/adr/0004-per-endpoint-isolation.md.

@@ -1,6 +1,7 @@
 package io.github.gouranshul.webhookrelay.dispatcher.delivery;
 
 import io.github.gouranshul.webhookrelay.common.model.DeliveryMessage;
+import io.github.gouranshul.webhookrelay.dispatcher.endpoint.EndpointHealth;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -14,10 +15,12 @@ public class DeadLetterHandler {
 
     private final DeliveryRepository deliveries;
     private final DeliveryMetrics metrics;
+    private final EndpointHealth endpointHealth;
 
-    public DeadLetterHandler(DeliveryRepository deliveries, DeliveryMetrics metrics) {
+    public DeadLetterHandler(DeliveryRepository deliveries, DeliveryMetrics metrics, EndpointHealth endpointHealth) {
         this.deliveries = deliveries;
         this.metrics = metrics;
+        this.endpointHealth = endpointHealth;
     }
 
     public void handle(DeliveryMessage message, String reason) {
@@ -26,6 +29,7 @@ public class DeadLetterHandler {
         if (deliveries.markDeadLettered(message.deliveryId(), trimmed)) {
             metrics.deadLettered();
             log.info("Delivery {} to endpoint {} dead-lettered: {}", message.deliveryId(), message.endpointId(), trimmed);
+            endpointHealth.onDeadLettered(message.endpointId());
         }
     }
 }

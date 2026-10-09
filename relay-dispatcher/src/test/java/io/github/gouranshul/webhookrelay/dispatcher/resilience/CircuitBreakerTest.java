@@ -18,7 +18,8 @@ import org.springframework.test.context.TestPropertySource;
 @TestPropertySource(properties = {
     "relay.resilience.circuit-breaker.sliding-window-size=4",
     "relay.resilience.circuit-breaker.minimum-calls=4",
-    "relay.resilience.circuit-breaker.open-duration=60s"
+    "relay.resilience.circuit-breaker.open-duration=60s",
+    "relay.auto-pause.consecutive-dlt=100"
 })
 class CircuitBreakerTest extends DispatcherIntegrationTest {
 
