@@ -1,0 +1,13 @@
+server:
+  port: 8090
+spring:
+  application:
+    name: mock-receiver
+  threads:
+    virtual:
+      enabled: true
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
