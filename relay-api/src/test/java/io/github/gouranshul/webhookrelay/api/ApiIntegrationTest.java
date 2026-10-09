@@ -22,7 +22,7 @@ import tools.jackson.databind.ObjectMapper;
  * Real Postgres and Kafka. The outbox relay bean is disabled by default so tests that count Kafka records
  * control exactly which relays run.
  */
-@SpringBootTest(properties = "relay.outbox.enabled=false")
+@SpringBootTest(properties = {RelayApiApplication.CONFIG_NAME, "relay.outbox.enabled=false"})
 @AutoConfigureMockMvc
 public abstract class ApiIntegrationTest {
 

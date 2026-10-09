@@ -26,16 +26,18 @@ public final class EmbeddedReceiver implements AutoCloseable {
     }
 
     public static EmbeddedReceiver start(String... properties) {
-        List<String> all = new ArrayList<>(List.of(
-                "server.port=0",
-                "spring.application.name=mock-receiver",
-                "spring.jmx.enabled=false",
-                "spring.autoconfigure.exclude=" + EXCLUDES,
-                "management.tracing.export.enabled=false"));
-        all.addAll(List.of(properties));
+        // Passed as command-line arguments so they win over mock-receiver.yml (e.g. its fixed port 8090).
+        List<String> args = new ArrayList<>(List.of(
+                "--server.port=0",
+                "--spring.jmx.enabled=false",
+                "--spring.autoconfigure.exclude=" + EXCLUDES,
+                "--management.tracing.export.enabled=false"));
+        for (String property : properties) {
+            args.add("--" + property);
+        }
         ConfigurableApplicationContext context = new SpringApplicationBuilder(MockReceiverApplication.class)
-                .properties(all.toArray(String[]::new))
-                .run();
+                .properties(MockReceiverApplication.CONFIG_NAME)
+                .run(args.toArray(String[]::new));
         return new EmbeddedReceiver(context);
     }
 
