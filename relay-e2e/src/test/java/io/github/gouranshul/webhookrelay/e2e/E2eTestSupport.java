@@ -28,7 +28,7 @@ abstract class E2eTestSupport {
     protected RelayStack stack;
     private final HttpClient http = HttpClient.newHttpClient();
 
-    /** Dispatcher property overrides for this class, e.g. {@code "relay.resilience.handoff-after=1s"}. */
+    /** Dispatcher property overrides for this class, e.g. {@code "relay.resilience.bulkhead-per-endpoint=20"}. */
     protected String[] dispatcherOverrides() {
         return new String[0];
     }

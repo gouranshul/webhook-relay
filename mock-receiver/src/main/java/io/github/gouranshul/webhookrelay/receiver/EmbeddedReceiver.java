@@ -31,7 +31,8 @@ public final class EmbeddedReceiver implements AutoCloseable {
                 "--server.port=0",
                 "--spring.jmx.enabled=false",
                 "--spring.autoconfigure.exclude=" + EXCLUDES,
-                "--management.tracing.export.enabled=false"));
+                "--management.tracing.export.enabled=false",
+                "--management.otlp.metrics.export.enabled=false"));
         for (String property : properties) {
             args.add("--" + property);
         }

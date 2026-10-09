@@ -76,6 +76,8 @@ final class RelayStack implements AutoCloseable {
                 "--relay.crypto.key=" + Containers.SECRET_KEY,
                 "--relay.endpoints.allow-private-networks=true",
                 "--relay.kafka.partitions=6",
+                "--relay.kafka.retry-partitions=6",
+                "--relay.dispatcher.concurrency=6",
                 "--management.tracing.sampling.probability=0.0");
 
         List<String> apiArgs = new ArrayList<>(common);
@@ -95,7 +97,8 @@ final class RelayStack implements AutoCloseable {
                 "--relay.retry.initial-delay=1s",
                 "--relay.retry.multiplier=2",
                 "--relay.retry.max-delay=30s",
-                "--relay.auto-pause.consecutive-dlt=0"));
+                "--relay.auto-pause.consecutive-dlt=0",
+                "--relay.dispatcher.lease-sweep-interval=5s"));
         for (String override : dispatcherOverrides) {
             dispatcherArgs.add("--" + override);
         }
@@ -112,6 +115,20 @@ final class RelayStack implements AutoCloseable {
     /** Restarts the Kafka broker in place (same container, same data, same host port). */
     void restartKafka() {
         DockerClientFactory.instance().client().restartContainerCmd(kafka.getContainerId()).withTimeout(10).exec();
+    }
+
+    /** Kills the broker (SIGKILL, no graceful shutdown), waits {@code downtime}, then starts the same container. */
+    void killKafkaFor(java.time.Duration downtime) throws InterruptedException {
+        var docker = DockerClientFactory.instance().client();
+        docker.killContainerCmd(kafka.getContainerId()).exec();
+        Thread.sleep(downtime);
+        docker.startContainerCmd(kafka.getContainerId()).exec();
+    }
+
+    /** Counter value from the dispatcher's meter registry. */
+    double dispatcherCounter(String name) {
+        var counter = dispatcher.getBean(io.micrometer.core.instrument.MeterRegistry.class).find(name).counter();
+        return counter == null ? 0 : counter.count();
     }
 
     @Override
