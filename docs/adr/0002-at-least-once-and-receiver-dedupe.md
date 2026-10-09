@@ -24,7 +24,7 @@ Duplicates are possible and expected in these cases:
 | Outbox → Kafka | Broker acked, then the relay's commit failed or the process died. The batch is published again. |
 | Kafka → dispatcher | Rebalance or crash before the offset commit. The record is consumed again. |
 | Dispatcher → receiver | The receiver processed the request but the response was lost (timeout, reset). Retried. |
-| Dispatcher → receiver | The HTTP call succeeded, then the dispatcher died before recording it. The lease expires and another worker sends again. |
+| Dispatcher → receiver | The HTTP call succeeded, then the dispatcher died before recording it. The lease expires, the lease sweeper re-enqueues it, and it is sent again. |
 
 ### What the relay dedupes itself
 
@@ -44,13 +44,15 @@ and longer if you replay old events.
 ### Ordering
 
 `webhook.deliveries` is keyed by `endpoint_id`, and the outbox relay publishes each endpoint's rows in
-order (ADR 0001), so **first attempts** reach the dispatcher in order per endpoint. Retries break that
+order (ADR 0001), so **first attempts** reach the dispatcher, and are started, in order per endpoint. Retries break that
 order: if event 1 fails and event 2 succeeds, event 2 arrives first and event 1 arrives 1 s to 10 min later.
-Handed-off attempts (ADR 0004) can also finish out of order.
+Attempts also run concurrently per endpoint (up to its bulkhead, ADR 0004), so even first attempts are only
+*started* in order; they can *complete* out of order.
 
 Strict per-endpoint ordering would need head-of-line blocking: stop everything for an endpoint until its
 oldest event succeeds. One bad event would then stall the endpoint indefinitely, and a slow receiver would
-need a dedicated partition. Most webhook consumers cannot rely on order anyway (they also receive events from
+need a dedicated partition. It would also cap every endpoint at one request per round trip (about 7/s against a
+150 ms receiver; ADR 0004 measured this). Most webhook consumers cannot rely on order anyway (they also receive events from
 other sources), so we choose availability.
 
 Receivers that care about order should use the event's `created_at` or a version number in `data`, and

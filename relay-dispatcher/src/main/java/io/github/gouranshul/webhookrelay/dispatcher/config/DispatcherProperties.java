@@ -21,19 +21,16 @@ public record DispatcherProperties(
     /**
      * Per-endpoint isolation. See docs/adr/0004-per-endpoint-isolation.md.
      *
-     * @param handoffAfter    how long the consumer thread waits for an attempt before moving on; the attempt
-     *                        keeps running in the background and records its own result
      * @param maxInFlight     global cap on concurrent attempts across all endpoints (bounds memory)
      * @param maxEndpoints    cap on per-endpoint guards kept in memory (circuit breaker + bulkhead)
      * @param bulkheadPerEndpoint concurrent attempts allowed per endpoint
      * @param rateLimitMaxWait how long a background attempt may wait for a rate-limit token before deferring
      */
     public record Resilience(
-            @DefaultValue("500ms") Duration handoffAfter,
             @DefaultValue("2000") int maxInFlight,
             @DefaultValue("10000") int maxEndpoints,
             @DefaultValue("1h") Duration guardIdleExpiry,
-            @DefaultValue("10") int bulkheadPerEndpoint,
+            @DefaultValue("50") int bulkheadPerEndpoint,
             @DefaultValue("true") boolean rateLimitEnabled,
             @DefaultValue("5s") Duration rateLimitMaxWait,
             @DefaultValue CircuitBreaker circuitBreaker) {
@@ -60,13 +57,16 @@ public record DispatcherProperties(
     }
 
     public record Dispatcher(
-            /* Consumer threads per topic (main topic and each retry topic). */
-            @DefaultValue("4") int concurrency,
+            /* Consumers for the main topic. Each processes its partitions one record at a time, so parallelism comes from
+               partitions x consumers (and instances). They run on virtual threads, so many are cheap. */
+            @DefaultValue("16") int concurrency,
+            /* Consumers per retry topic and for the DLT; retry traffic is a small fraction of the main topic. */
+            @DefaultValue("2") int retryConcurrency,
             @DefaultValue("2s") Duration connectTimeout,
             /* Whole-response timeout for one webhook request. */
             @DefaultValue("10s") Duration requestTimeout,
             /* Extra lease on an in-flight delivery beyond the request timeout, before another worker may reclaim it. */
-            @DefaultValue("5s") Duration leaseMargin,
+            @DefaultValue("30s") Duration leaseMargin,
             /* How much of a failed response body is kept in delivery_attempts.error. */
             @DefaultValue("512") int errorBodyLimit,
             /* "virtual" (one virtual thread per HTTP attempt) or "platform" (fixed pool, for comparison). */
@@ -95,6 +95,9 @@ public record DispatcherProperties(
         }
     }
 
-    public record Kafka(@DefaultValue("12") int partitions, @DefaultValue("1") short replicationFactor) {
+    public record Kafka(
+            @DefaultValue("48") int partitions,
+            @DefaultValue("12") int retryPartitions,
+            @DefaultValue("1") short replicationFactor) {
     }
 }

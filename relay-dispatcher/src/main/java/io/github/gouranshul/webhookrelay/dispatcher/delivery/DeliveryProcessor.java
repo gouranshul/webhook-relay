@@ -7,6 +7,7 @@ import io.github.gouranshul.webhookrelay.dispatcher.endpoint.EndpointCache;
 import io.github.gouranshul.webhookrelay.dispatcher.endpoint.EndpointConfig;
 import io.github.gouranshul.webhookrelay.dispatcher.http.HttpOutcome;
 import io.github.gouranshul.webhookrelay.dispatcher.http.WebhookSender;
+import io.github.gouranshul.webhookrelay.dispatcher.kafka.RetryForwarder;
 import io.github.gouranshul.webhookrelay.dispatcher.resilience.EndpointGuards;
 import io.github.gouranshul.webhookrelay.dispatcher.resilience.RedisRateLimiter;
 import io.github.gouranshul.webhookrelay.dispatcher.tracing.OutboundTracing;
@@ -19,13 +20,11 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -33,30 +32,24 @@ import org.springframework.stereotype.Component;
 /**
  * Delivers one message without letting a slow or failing endpoint hold up anyone else.
  *
- * <p>On the consumer thread, only fast, non-blocking steps run: endpoint lookup (cached), circuit breaker,
- * bulkhead and global in-flight permits, and the claim (one indexed UPDATE). The slow part (waiting for a
- * rate-limit token, the HTTP call) runs on the delivery executor. The consumer waits for it at most
- * {@code handoffAfter}; past that the record is passed to the next retry topic and the attempt finishes in
- * the background, recording its own result. The retry copy later finds the delivery SUCCEEDED (and skips it)
- * or RETRYING (and tries again).
+ * <p>The consumer thread runs only fast steps: endpoint lookup (cached), circuit breaker and bulkhead permits, a
+ * global in-flight permit, and the claim (one indexed UPDATE that also takes a lease). It then hands the
+ * attempt to a virtual thread and moves on to the next record. Many attempts for the same endpoint can run at
+ * once (up to its bulkhead), so a hot endpoint is not limited to one request per round trip.
  *
- * <p>Returns normally when the record needs no more work. Throws {@link RetryableDeliveryException} to
- * schedule a retry and {@link PermanentDeliveryException} to dead-letter.
+ * <p>The attempt finishes the job itself: success is recorded; a retryable failure is forwarded to the next
+ * retry topic (and a permanent one to the DLT) through {@link RetryForwarder}, exactly as the framework would.
+ * Because the Kafka record was already committed, the delivery row is the durable state: it stays IN_FLIGHT
+ * under a lease until the outcome is recorded, and {@link LeaseSweeper} re-enqueues it if that never happens.
+ *
+ * <p>Decisions made on the consumer thread (circuit open, bulkhead full, already in flight elsewhere) throw
+ * {@link RetryableDeliveryException} and the container's {@code @RetryableTopic} error handling forwards them.
  */
 @Component
 public class DeliveryProcessor {
 
     private static final Logger log = LoggerFactory.getLogger(DeliveryProcessor.class);
-
-    /** What a background attempt produced. */
-    sealed interface AttemptResult permits Sent, Deferred {
-    }
-
-    record Sent(HttpOutcome outcome) implements AttemptResult {
-    }
-
-    record Deferred(String reason) implements AttemptResult {
-    }
+    private static final Duration IN_FLIGHT_WAIT = Duration.ofSeconds(30);
 
     private final EndpointCache endpoints;
     private final DeliveryRepository deliveries;
@@ -65,15 +58,16 @@ public class DeliveryProcessor {
     private final OutboundTracing tracing;
     private final EndpointGuards guards;
     private final RedisRateLimiter rateLimiter;
+    private final RetryForwarder forwarder;
     private final ExecutorService executor;
     private final DispatcherProperties.Resilience resilience;
     private final Semaphore inFlight;
     private final Duration lease;
-    private final Duration handedOffRetryAfter;
 
     public DeliveryProcessor(EndpointCache endpoints, DeliveryRepository deliveries, WebhookSender sender,
             DeliveryMetrics metrics, OutboundTracing tracing, EndpointGuards guards, RedisRateLimiter rateLimiter,
-            ExecutorService deliveryExecutor, DispatcherProperties properties, MeterRegistry registry) {
+            RetryForwarder forwarder, ExecutorService deliveryExecutor, DispatcherProperties properties,
+            MeterRegistry registry) {
         this.endpoints = endpoints;
         this.deliveries = deliveries;
         this.sender = sender;
@@ -81,6 +75,7 @@ public class DeliveryProcessor {
         this.tracing = tracing;
         this.guards = guards;
         this.rateLimiter = rateLimiter;
+        this.forwarder = forwarder;
         this.executor = deliveryExecutor;
         this.resilience = properties.resilience();
         this.inFlight = new Semaphore(resilience.maxInFlight());
@@ -88,17 +83,13 @@ public class DeliveryProcessor {
         this.lease = properties.dispatcher().requestTimeout()
                 .plus(resilience.rateLimitEnabled() ? resilience.rateLimitMaxWait() : Duration.ZERO)
                 .plus(properties.dispatcher().leaseMargin());
-        // A handed-off attempt is certainly finished (one way or the other) after token wait + request timeout.
-        // Scheduling its retry copy for then avoids burning retry slots on "still in flight".
-        Duration attemptBound = properties.dispatcher().requestTimeout()
-                .plus(resilience.rateLimitEnabled() ? resilience.rateLimitMaxWait() : Duration.ZERO);
-        this.handedOffRetryAfter = attemptBound.minus(resilience.handoffAfter()).plusMillis(250);
         Gauge.builder("webhook.delivery.inflight", inFlight, s -> resilience.maxInFlight() - s.availablePermits())
                 .description("HTTP attempts currently running")
                 .register(registry);
     }
 
-    public void process(DeliveryMessage message) {
+    /** Called on the consumer thread. Returns once the attempt has been started (or found unnecessary). */
+    public void process(ConsumerRecord<String, String> record, DeliveryMessage message) {
         EndpointConfig endpoint = endpoints.get(message.endpointId());
         if (!isDeliverable(message, endpoint)) {
             return;
@@ -109,20 +100,21 @@ public class DeliveryProcessor {
         Bulkhead bulkhead = guard.bulkhead();
 
         if (!breaker.tryAcquirePermission()) {
-            defer("circuit_open", "circuit breaker open; endpoint not called");
+            throw defer("circuit_open", "circuit breaker open; endpoint not called");
         }
         if (!bulkhead.tryAcquirePermission()) {
             breaker.releasePermission();
-            defer("bulkhead_full", "endpoint already has " + resilience.bulkheadPerEndpoint() + " attempts in flight");
+            throw defer("bulkhead_full", "endpoint already has " + resilience.bulkheadPerEndpoint() + " attempts in flight");
         }
-        if (!inFlight.tryAcquire()) {
+        // The only place the consumer waits: when the whole dispatcher is saturated. That is back-pressure:
+        // consumer lag grows and KEDA adds instances.
+        if (!acquireInFlight()) {
             bulkhead.onComplete();
             breaker.releasePermission();
-            defer("dispatcher_saturated", "dispatcher at its in-flight limit");
+            throw defer("dispatcher_saturated", "dispatcher at its in-flight limit");
         }
 
-        // From here on the permits are released exactly once: by the background attempt, or below if the
-        // attempt never starts.
+        // From here on the permits are released exactly once: by the attempt, or below if it never starts.
         OptionalInt claimed;
         try {
             claimed = deliveries.claim(message.deliveryId(), lease);
@@ -138,76 +130,78 @@ public class DeliveryProcessor {
         int attempt = claimed.getAsInt();
         Map<String, String> traceHeaders = tracing.currentHeaders();
 
-        Future<AttemptResult> future;
         try {
-            future = executor.submit(() -> runAttempt(message, endpoint, attempt, breaker, bulkhead, traceHeaders));
+            executor.execute(() -> runAttempt(record, message, endpoint, attempt, breaker, bulkhead, traceHeaders));
         } catch (RejectedExecutionException e) {
             releaseAll(breaker, bulkhead);
             deliveries.release(message.deliveryId(), "executor rejected the attempt");
             throw new RetryableDeliveryException("executor rejected the attempt");
         }
-
-        AttemptResult result;
-        try {
-            result = future.get(resilience.handoffAfter().toMillis(), TimeUnit.MILLISECONDS);
-        } catch (TimeoutException slow) {
-            metrics.skipped("handed_off");
-            throw new RetryableDeliveryException("attempt still running after " + resilience.handoffAfter().toMillis()
-                    + " ms; continuing in the background", handedOffRetryAfter);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RetryableDeliveryException("interrupted while waiting for the attempt");
-        } catch (ExecutionException e) {
-            if (e.getCause() instanceof RuntimeException runtime) {
-                throw runtime;
-            }
-            throw new IllegalStateException(e.getCause());
-        }
-
-        switch (result) {
-            case Deferred deferred -> throw new RetryableDeliveryException(deferred.reason());
-            case Sent sent -> {
-                HttpOutcome outcome = sent.outcome();
-                switch (outcome.kind()) {
-                    case SUCCESS -> {
-                    }
-                    case PERMANENT -> throw new PermanentDeliveryException(outcome.error());
-                    default -> throw new RetryableDeliveryException(outcome.error(), outcome.retryAfter());
-                }
-            }
-        }
     }
 
     /** Runs on the delivery executor. Owns the permits and the delivery's lease until it returns. */
-    private AttemptResult runAttempt(DeliveryMessage message, EndpointConfig endpoint, int attempt,
-            CircuitBreaker breaker, Bulkhead bulkhead, Map<String, String> traceHeaders) throws InterruptedException {
+    private void runAttempt(ConsumerRecord<String, String> record, DeliveryMessage message, EndpointConfig endpoint,
+            int attempt, CircuitBreaker breaker, Bulkhead bulkhead, Map<String, String> traceHeaders) {
         boolean called = false;
         try {
             if (resilience.rateLimitEnabled()
                     && !rateLimiter.acquire(endpoint.id(), endpoint.rateLimitPerSec(), resilience.rateLimitMaxWait())) {
-                deliveries.release(message.deliveryId(), "rate limited");
                 metrics.skipped("rate_limited");
-                return new Deferred("rate limit of " + endpoint.rateLimitPerSec() + "/s reached");
+                if (forward(record, new RetryableDeliveryException(
+                        "rate limit of " + endpoint.rateLimitPerSec() + "/s reached"))) {
+                    deliveries.release(message.deliveryId(), "rate limited");
+                }
+                return;
             }
             byte[] body = message.toWireBody().getBytes(StandardCharsets.UTF_8);
             HttpOutcome outcome = sender.send(endpoint, message.webhookId().toString(), body, traceHeaders);
             called = true;
             recordInBreaker(breaker, outcome);
-            deliveries.recordAttempt(message.deliveryId(), message.endpointId(), attempt, outcome);
             metrics.attempt(attempt, outcome);
-            return new Sent(outcome);
-        } catch (RuntimeException | InterruptedException e) {
-            // Nobody may be waiting for this future (handed off), so log here; the lease expiring lets a retry copy
-            // reclaim the delivery.
+            switch (outcome.kind()) {
+                case SUCCESS -> deliveries.recordAttempt(message.deliveryId(), message.endpointId(), attempt, outcome, false);
+                case PERMANENT -> {
+                    forward(record, new PermanentDeliveryException(outcome.error()));
+                    deliveries.recordAttempt(message.deliveryId(), message.endpointId(), attempt, outcome, false);
+                }
+                default -> {
+                    boolean scheduled = forward(record, new RetryableDeliveryException(outcome.error(), outcome.retryAfter()));
+                    deliveries.recordAttempt(message.deliveryId(), message.endpointId(), attempt, outcome, scheduled);
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (RuntimeException e) {
+            // E.g. the database is down while recording. The lease expires and the sweeper re-enqueues it.
             log.warn("Attempt {} for delivery {} failed {} the HTTP call: {}", attempt, message.deliveryId(),
                     called ? "after" : "before", e.toString());
-            throw e;
         } finally {
             if (!called) {
                 breaker.releasePermission();
             }
             bulkhead.onComplete();
             inFlight.release();
+        }
+    }
+
+    /** Returns false (and logs) if the record could not be published; the lease then covers it. */
+    private boolean forward(ConsumerRecord<String, String> record, RuntimeException cause) {
+        try {
+            forwarder.forward(record, cause);
+            return true;
+        } catch (RuntimeException e) {
+            log.warn("Could not forward {}-{}@{} to its retry topic; the lease sweeper will re-enqueue it: {}",
+                    record.topic(), record.partition(), record.offset(), e.toString());
+            return false;
+        }
+    }
+
+    private boolean acquireInFlight() {
+        try {
+            return inFlight.tryAcquire(IN_FLIGHT_WAIT.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
         }
     }
 
@@ -230,9 +224,9 @@ public class DeliveryProcessor {
         inFlight.release();
     }
 
-    private void defer(String metric, String reason) {
+    private RetryableDeliveryException defer(String metric, String reason) {
         metrics.skipped(metric);
-        throw new RetryableDeliveryException(reason);
+        return new RetryableDeliveryException(reason);
     }
 
     /** Endpoint deleted: cancel. Paused: park (only if it really is paused right now). */
@@ -271,9 +265,9 @@ public class DeliveryProcessor {
             metrics.skipped("duplicate");
             return;
         }
-        // IN_FLIGHT under a live lease: a handed-off attempt or another worker. Check again on the next retry.
-        metrics.skipped("in_flight_elsewhere");
+        // IN_FLIGHT under a live lease: another copy of this delivery is being attempted right now.
         // Come back when the lease runs out, not on the next short retry delay.
+        metrics.skipped("in_flight_elsewhere");
         throw new RetryableDeliveryException("delivery is in flight on another worker",
                 state.get().leaseRemaining().plusMillis(250));
     }

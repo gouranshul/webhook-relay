@@ -30,7 +30,6 @@ import org.springframework.test.context.TestPropertySource;
 @TestPropertySource(properties = {
     "relay.dispatcher.concurrency=1",
     "relay.dispatcher.request-timeout=15s",
-    "relay.resilience.handoff-after=250ms",
     "relay.resilience.bulkhead-per-endpoint=4",
     "relay.retry.attempts=6"
 })
