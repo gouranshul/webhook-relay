@@ -37,6 +37,7 @@ import tools.jackson.databind.ObjectMapper;
  * Each class gets a fresh context, closed afterwards, so only one dispatcher consumes at a time.
  */
 @SpringBootTest(classes = DispatcherApplication.class, properties = {
+    DispatcherApplication.CONFIG_NAME,
     "spring.flyway.enabled=true",
     "relay.endpoints.allow-private-networks=true",
     "relay.endpoints.cache-ttl=300ms",
