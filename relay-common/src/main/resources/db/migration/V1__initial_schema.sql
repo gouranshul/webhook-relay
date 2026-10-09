@@ -54,7 +54,7 @@ CREATE TABLE deliveries (
     last_status_code integer,
     last_error       text,
     lease_until      timestamptz,                    -- set while IN_FLIGHT; an expired lease may be reclaimed
-    not_before       timestamptz,                    -- earliest next attempt (honours Retry-After)
+    dlt_at           timestamptz,                    -- set once when the DLT handler records it
     created_at       timestamptz NOT NULL DEFAULT now(),
     updated_at       timestamptz NOT NULL DEFAULT now(),
     completed_at     timestamptz
