@@ -1,13 +1,29 @@
 server:
   port: 8090
+  shutdown: graceful
+  tomcat:
+    threads:
+      max: 400
+
 spring:
   application:
     name: mock-receiver
   threads:
     virtual:
       enabled: true
+
+# Default behaviour for every hook without an override. Env: RECEIVER_FAILURE_RATE, RECEIVER_MIN_LATENCY_MS, ...
+receiver:
+  failure-rate: 0
+  min-latency-ms: 0
+  max-latency-ms: 0
+  failure-status: 503
+
 management:
   endpoints:
     web:
       exposure:
         include: health,info,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
