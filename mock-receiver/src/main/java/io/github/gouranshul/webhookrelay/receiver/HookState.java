@@ -85,6 +85,11 @@ public final class HookState {
         return duplicate;
     }
 
+    /** Whether this webhook id was answered 2xx (within the bounded memory of recent ids). */
+    public boolean hasSucceeded(String webhookId) {
+        return succeededIds.containsKey(webhookId);
+    }
+
     synchronized void record(Received received) {
         recent.addLast(received);
         while (recent.size() > maxRecorded) {
