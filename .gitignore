@@ -1,0 +1,13 @@
+target/
+*.class
+*.log
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+.env
+*.env.local
+load/results/*.json
+!load/results/.gitkeep
+deploy/helm/webhook-relay/charts/
