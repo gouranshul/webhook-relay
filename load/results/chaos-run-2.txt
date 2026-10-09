@@ -1,0 +1,13 @@
+# ChaosTest output (2026-10-09, ./mvnw -pl relay-e2e verify, detached-attempt dispatcher)
+
+CHAOS kafka-restart: sent=600 accepted=600 clientRetries=0 slowestApiResponse=146ms peakOutboxPending=722 peakOutboxLag=15s | events=600 deliveries=1800 byStatus={SUCCEEDED=1800} attempts=1980 receiverRequests=1980 receiverDuplicates=0 succeededButNotReceived=0 | drained in 87s
+CHAOS postgres-5s-latency: sent=600 accepted=600 clientRetries=0 slowestApiResponse=20655ms peakOutboxPending=246 peakOutboxLag=0s | events=600 deliveries=1800 byStatus={SUCCEEDED=1800} attempts=1985 receiverRequests=1985 receiverDuplicates=0 succeededButNotReceived=0 | drained in 49s
+CHAOS receiver-503-60s: sent=600 accepted=600 clientRetries=0 slowestApiResponse=65ms peakOutboxPending=9 peakOutboxLag=0s | events=600 deliveries=1800 byStatus={FAILED=1, SUCCEEDED=1799} attempts=2046 receiverRequests=2046 receiverDuplicates=0 succeededButNotReceived=0 | drained in 199s
+
+lease sweeper log lines:
+forward failures (Kafka unavailable) logged: 0
+
+## Scenario 4 (separate run, 2026-10-09)
+CHAOS kafka-outage-45s+failing-receiver (lease-sweeper re-enqueued 3): sent=600 accepted=600 clientRetries=0 slowestApiResponse=81ms peakOutboxPending=721 peakOutboxLag=59s | events=600 deliveries=1800 byStatus={SUCCEEDED=1800} attempts=2034 receiverRequests=2034 receiverDuplicates=0 succeededButNotReceived=0 | drained in 149s
+16:02:14.311 Re-enqueued 3 deliveries whose attempt lease expired
+forward failures logged during the outage: 3
