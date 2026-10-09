@@ -1,0 +1,16 @@
+apiVersion: v2
+name: webhook-relay
+description: Reliable webhook delivery - relay-api (REST + transactional outbox) and relay-dispatcher (Kafka retry topics, signed HTTP delivery).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - webhooks
+  - kafka
+  - outbox
+home: https://github.com/gouranshul/webhook-relay
+sources:
+  - https://github.com/gouranshul/webhook-relay
+maintainers:
+  - name: Anshul Gour
+    url: https://github.com/gouranshul

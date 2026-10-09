@@ -1,0 +1,9 @@
+webhook-relay {{ .Chart.AppVersion }} is installed as release "{{ .Release.Name }}".
+
+API:        {{ include "webhook-relay.fullname" . }}-api:{{ .Values.api.service.port }}
+Dispatcher: {{ include "webhook-relay.fullname" . }}-dispatcher:{{ .Values.dispatcher.service.port }} (metrics only)
+Autoscaling: {{ if .Values.autoscaling.keda.enabled }}KEDA on consumer-group lag ({{ .Values.autoscaling.keda.consumerGroup }}/{{ .Values.autoscaling.keda.topic }}){{ else if .Values.autoscaling.hpa.enabled }}HPA on CPU{{ else }}fixed {{ .Values.dispatcher.replicaCount }} replicas{{ end }}
+
+Try it:
+  kubectl port-forward svc/{{ include "webhook-relay.fullname" . }}-api 8080:{{ .Values.api.service.port }}
+  curl -H "Authorization: Bearer $RELAY_API_TOKEN" localhost:8080/v1/endpoints
