@@ -11,7 +11,12 @@ public record RelayApiProperties(
         @DefaultValue Events events,
         @DefaultValue Endpoints endpoints,
         @DefaultValue Outbox outbox,
-        @DefaultValue Kafka kafka) {
+        @DefaultValue Kafka kafka,
+        @DefaultValue Retention retention) {
+
+    /** How long finished deliveries (and their attempts) and events are kept. */
+    public record Retention(@DefaultValue("30d") Duration deliveries) {
+    }
 
     /** AES-256 key (base64) that encrypts endpoint signing secrets at rest. */
     public record Crypto(String key, @DefaultValue("k1") String keyId) {
@@ -40,6 +45,6 @@ public record RelayApiProperties(
             @DefaultValue("1h") Duration retention) {
     }
 
-    public record Kafka(@DefaultValue("12") int partitions, @DefaultValue("1") short replicationFactor) {
+    public record Kafka(@DefaultValue("48") int partitions, @DefaultValue("1") short replicationFactor) {
     }
 }

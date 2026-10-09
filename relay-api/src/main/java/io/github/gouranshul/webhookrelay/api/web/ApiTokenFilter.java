@@ -55,7 +55,7 @@ public class ApiTokenFilter extends OncePerRequestFilter {
                     "Request body exceeds " + maxBodyBytes + " bytes");
             return;
         }
-        chain.doFilter(request, response);
+        chain.doFilter(new LimitedBodyRequest(request, maxBodyBytes), response);
     }
 
     private boolean authorized(String header) {
