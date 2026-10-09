@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: relay-api
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["relay-api:8080"]
+  - job_name: relay-dispatcher
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["relay-dispatcher:8081"]
+  - job_name: mock-receiver
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["mock-receiver:8090"]
