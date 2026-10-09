@@ -23,7 +23,7 @@ class RetrySchedulingTest {
             6, Duration.ofSeconds(1), 5, Duration.ofMinutes(10), 0.2, Duration.ofHours(1));
 
     private final RetryScheduling scheduling = new RetryScheduling(
-            new DispatcherProperties(null, null, null, RETRY, null, null), Clock.fixed(NOW, ZoneOffset.UTC));
+            new DispatcherProperties(null, null, null, RETRY, null, null, null), Clock.fixed(NOW, ZoneOffset.UTC));
 
     private static ConsumerRecord<String, String> recordAfterAttempts(Integer attempts) {
         var record = new ConsumerRecord<>("webhook.deliveries", 0, 0L, "k", "v");

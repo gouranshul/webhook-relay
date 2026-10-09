@@ -67,6 +67,8 @@ relay:
     max-in-flight: ${RELAY_MAX_IN_FLIGHT:2000}
     bulkhead-per-endpoint: ${RELAY_BULKHEAD_PER_ENDPOINT:10}
     rate-limit-enabled: ${RELAY_RATE_LIMIT_ENABLED:true}
+  auto-pause:
+    consecutive-dlt: ${RELAY_AUTO_PAUSE_CONSECUTIVE_DLT:10}
   kafka:
     partitions: ${RELAY_KAFKA_PARTITIONS:12}
 
