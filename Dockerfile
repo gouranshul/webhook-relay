@@ -9,6 +9,7 @@ COPY relay-common/pom.xml relay-common/
 COPY relay-api/pom.xml relay-api/
 COPY relay-dispatcher/pom.xml relay-dispatcher/
 COPY mock-receiver/pom.xml mock-receiver/
+COPY relay-e2e/pom.xml relay-e2e/
 COPY relay-common/src relay-common/src
 COPY relay-api/src relay-api/src
 COPY relay-dispatcher/src relay-dispatcher/src

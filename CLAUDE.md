@@ -18,9 +18,9 @@ tests and chaos tests.
 | `relay-api` | REST API (`/v1/endpoints`, `/v1/events`, `/v1/deliveries`, replay), idempotency keys, the transactional outbox and `OutboxRelay` |
 | `relay-dispatcher` | Kafka consumers on virtual threads, `@RetryableTopic` retries + DLT, signed HTTP delivery (JDK `HttpClient`), per-endpoint resilience |
 | `mock-receiver` | Flaky receiver for tests and load: configurable failure rate, latency, status codes; verifies signatures; counts duplicates |
-| `relay-e2e` | End-to-end and chaos tests (Testcontainers + Toxiproxy) that run all three apps in one JVM |
+| `relay-e2e` | End-to-end chaos tests (Testcontainers + Toxiproxy): all three apps in one JVM, asserting zero lost events |
 | `load/` | k6 scripts |
-| `deploy/` | Helm chart (KEDA), Grafana dashboard, Prometheus config |
+| `deploy/` | Helm chart (KEDA or HPA), Grafana dashboard, Prometheus config |
 | `docs/` | ADRs and measured benchmarks |
 
 ## Commands
@@ -28,13 +28,14 @@ tests and chaos tests.
 ```bash
 ./mvnw verify                                  # build + all tests (needs Docker for Testcontainers)
 ./mvnw -pl relay-dispatcher -am verify         # one module and what it depends on
-./mvnw -pl relay-common test -Dtest=WebhookSignerTest
+./mvnw -pl relay-common test -Dtest=WebhookSignatureTest
 cp .env.example .env                           # then replace every placeholder
 docker compose up -d --build                   # full local stack
-docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 detect --source /repo -v   # before every push
+docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 git /repo   # before every push
+RATE=100 load/run-benchmark.sh my-run         # k6 benchmark against the compose stack (see docs/benchmarks.md)
 ```
 
-Ports: api 8080, dispatcher 8081, mock-receiver 8090, Prometheus 9090, Grafana 3000, Kafka 29092 (host).
+Ports: api 8080, dispatcher 8081, mock-receiver 8090, Prometheus 9090, Grafana 3000, Jaeger 16686, Kafka 29092 (host).
 
 ## Hard rules
 
@@ -53,6 +54,10 @@ Ports: api 8080, dispatcher 8081, mock-receiver 8090, Prometheus 9090, Grafana 3
 ## Conventions
 
 - Java 25, Spring Boot 4.1, `JdbcClient` (no JPA). Records for DTOs and messages.
+- Each app reads its own config file (`relay-api.yml`, `relay-dispatcher.yml`, `mock-receiver.yml`) via
+  `spring.config.name`, so apps can share a classpath in tests. Tests must pass `XxxApplication.CONFIG_NAME`.
+- The dispatcher never waits for HTTP on the consumer thread: attempts run on virtual threads, forward their
+  own failures via `RetryForwarder`, and the delivery lease + `LeaseSweeper` cover crashes (ADR 0004).
 - Package root: `io.github.gouranshul.webhookrelay.<module>`.
 - Delivery semantics are at-least-once. Receivers must dedupe on `Webhook-Id`. Never claim exactly-once.
 - Anything per-endpoint that lives in memory (circuit breakers, bulkheads, caches) must be bounded.
