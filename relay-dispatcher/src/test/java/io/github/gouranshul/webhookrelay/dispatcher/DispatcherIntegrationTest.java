@@ -24,6 +24,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.kafka.KafkaContainer;
@@ -32,8 +33,8 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Real Postgres and Kafka, and the mock receiver running in-process. Retry delays and timeouts are shortened
- * so the full retry chain runs in seconds. Every test class uses exactly these properties, so they share one
- * Spring context (and one consumer group).
+ * so the full retry chain runs in seconds. Subclasses may override properties with {@code @TestPropertySource}.
+ * Each class gets a fresh context, closed afterwards, so only one dispatcher consumes at a time.
  */
 @SpringBootTest(classes = DispatcherApplication.class, properties = {
     "spring.flyway.enabled=true",
@@ -48,8 +49,11 @@ import tools.jackson.databind.ObjectMapper;
     "relay.retry.multiplier=2",
     "relay.retry.max-delay=2s",
     "relay.retry.jitter=0.2",
+    "relay.resilience.handoff-after=2s",
+    "relay.resilience.rate-limit-max-wait=2s",
     "relay.kafka.partitions=3"
 })
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 public abstract class DispatcherIntegrationTest {
 
     @ServiceConnection
@@ -58,11 +62,15 @@ public abstract class DispatcherIntegrationTest {
     @ServiceConnection
     protected static final KafkaContainer KAFKA = Containers.kafka();
 
+    protected static final org.testcontainers.containers.GenericContainer<?> REDIS = Containers.redis();
+
     protected static final EmbeddedReceiver RECEIVER = EmbeddedReceiver.start();
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
         registry.add("relay.crypto.key", () -> Containers.SECRET_KEY);
+        registry.add("spring.data.redis.host", REDIS::getHost);
+        registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
     }
 
     @Autowired
@@ -83,10 +91,13 @@ public abstract class DispatcherIntegrationTest {
     }
 
     protected TestEndpoint endpoint(Behavior behavior, int rateLimitPerSec) {
+        return endpoint(UUID.randomUUID(), behavior, rateLimitPerSec);
+    }
+
+    protected TestEndpoint endpoint(UUID id, Behavior behavior, int rateLimitPerSec) {
         String hook = "hook-" + UUID.randomUUID();
         String secret = SigningSecrets.generate();
         UUID secretId = UUID.randomUUID();
-        UUID id = UUID.randomUUID();
         jdbc.sql("INSERT INTO endpoint_secrets (id, key_id, ciphertext) VALUES (?, ?, ?)")
                 .params(secretId, cipher.keyId(), cipher.encrypt(secretId, secret)).update();
         jdbc.sql("""

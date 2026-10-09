@@ -10,7 +10,39 @@ public record DispatcherProperties(
         @DefaultValue Endpoints endpoints,
         @DefaultValue Dispatcher dispatcher,
         @DefaultValue Retry retry,
+        @DefaultValue Resilience resilience,
         @DefaultValue Kafka kafka) {
+
+    /**
+     * Per-endpoint isolation. See docs/adr/0004-per-endpoint-isolation.md.
+     *
+     * @param handoffAfter    how long the consumer thread waits for an attempt before moving on; the attempt
+     *                        keeps running in the background and records its own result
+     * @param maxInFlight     global cap on concurrent attempts across all endpoints (bounds memory)
+     * @param maxEndpoints    cap on per-endpoint guards kept in memory (circuit breaker + bulkhead)
+     * @param bulkheadPerEndpoint concurrent attempts allowed per endpoint
+     * @param rateLimitMaxWait how long a background attempt may wait for a rate-limit token before deferring
+     */
+    public record Resilience(
+            @DefaultValue("500ms") Duration handoffAfter,
+            @DefaultValue("2000") int maxInFlight,
+            @DefaultValue("10000") int maxEndpoints,
+            @DefaultValue("1h") Duration guardIdleExpiry,
+            @DefaultValue("10") int bulkheadPerEndpoint,
+            @DefaultValue("true") boolean rateLimitEnabled,
+            @DefaultValue("5s") Duration rateLimitMaxWait,
+            @DefaultValue CircuitBreaker circuitBreaker) {
+    }
+
+    public record CircuitBreaker(
+            @DefaultValue("50") float failureRateThreshold,
+            @DefaultValue("80") float slowCallRateThreshold,
+            @DefaultValue("5s") Duration slowCallDuration,
+            @DefaultValue("20") int slidingWindowSize,
+            @DefaultValue("10") int minimumCalls,
+            @DefaultValue("30s") Duration openDuration,
+            @DefaultValue("3") int halfOpenCalls) {
+    }
 
     public record Crypto(String key, @DefaultValue("k1") String keyId) {
     }
