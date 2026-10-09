@@ -1,0 +1,6 @@
+# ChaosTest output (2026-10-09, ./mvnw -pl relay-e2e verify)
+
+CHAOS kafka-restart: sent=600 accepted=600 clientRetries=0 slowestApiResponse=112ms peakOutboxPending=718 peakOutboxLag=15s | events=600 deliveries=1800 byStatus={SUCCEEDED=1800} attempts=2028 receiverRequests=2028 receiverDuplicates=0 succeededButNotReceived=0 | drained in 114s
+CHAOS postgres-5s-latency: sent=600 accepted=600 clientRetries=0 slowestApiResponse=20838ms peakOutboxPending=188 peakOutboxLag=0s | events=600 deliveries=1800 byStatus={SUCCEEDED=1800} attempts=2002 receiverRequests=2002 receiverDuplicates=0 succeededButNotReceived=0 | drained in 66s
+CHAOS receiver-503-60s: sent=600 accepted=600 clientRetries=0 slowestApiResponse=91ms peakOutboxPending=13 peakOutboxLag=0s | events=600 deliveries=1800 byStatus={SUCCEEDED=1800} attempts=2040 receiverRequests=2040 receiverDuplicates=0 succeededButNotReceived=0 | drained in 200s
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0

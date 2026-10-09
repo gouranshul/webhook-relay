@@ -31,6 +31,7 @@
         <module>relay-api</module>
         <module>relay-dispatcher</module>
         <module>mock-receiver</module>
+        <module>relay-e2e</module>
     </modules>
 
     <properties>
