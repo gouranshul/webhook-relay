@@ -5,6 +5,7 @@ import io.github.gouranshul.webhookrelay.common.crypto.SecretCipher;
 import io.github.gouranshul.webhookrelay.common.net.EndpointUrlPolicy;
 import io.github.gouranshul.webhookrelay.dispatcher.http.WebhookSender;
 import java.time.Clock;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.apache.kafka.clients.admin.NewTopic;
@@ -50,10 +51,17 @@ public class DispatcherConfig {
         return Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("delivery-", 0).factory());
     }
 
+    /**
+     * The HttpClient gets its OWN executor. Sharing the bounded attempt pool with it deadlocks: when every pool
+     * thread is blocked in {@code send()}, none is left to complete the responses they are waiting for (seen in a
+     * load test with a 200-thread pool; see docs/benchmarks.md). Platform mode uses the JDK default (a cached pool).
+     */
     @Bean
-    WebhookSender webhookSender(DispatcherProperties properties, EndpointUrlPolicy policy,
-            ExecutorService deliveryExecutor, Clock clock) {
-        return new WebhookSender(properties.dispatcher(), policy, deliveryExecutor, clock);
+    WebhookSender webhookSender(DispatcherProperties properties, EndpointUrlPolicy policy, Clock clock) {
+        boolean platform = "platform".equalsIgnoreCase(properties.dispatcher().executor());
+        Executor httpExecutor = platform ? null
+                : Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("http-", 0).factory());
+        return new WebhookSender(properties.dispatcher(), policy, httpExecutor, clock);
     }
 
     @Bean
