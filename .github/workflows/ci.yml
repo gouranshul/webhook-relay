@@ -57,9 +57,12 @@ jobs:
           version: v4.3.0
       - run: helm lint deploy/helm/webhook-relay --strict --set secrets.existingSecret=relay
       - name: Render with KEDA (default)
-        run: helm template ci deploy/helm/webhook-relay --set secrets.existingSecret=relay | grep -q "kind: ScaledObject"
+        run: |
+          helm template ci deploy/helm/webhook-relay --set secrets.existingSecret=relay | grep -q "kind: ScaledObject"
       - name: Render with the HPA fallback
-        run: helm template ci deploy/helm/webhook-relay --set secrets.existingSecret=relay --set autoscaling.keda.enabled=false --set autoscaling.hpa.enabled=true | grep -q "kind: HorizontalPodAutoscaler"
+        run: |
+          helm template ci deploy/helm/webhook-relay --set secrets.existingSecret=relay \
+            --set autoscaling.keda.enabled=false --set autoscaling.hpa.enabled=true | grep -q "kind: HorizontalPodAutoscaler"
 
   gitleaks:
     name: Secret scan
