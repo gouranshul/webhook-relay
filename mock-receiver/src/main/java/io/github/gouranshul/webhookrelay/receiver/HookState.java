@@ -58,7 +58,11 @@ public final class HookState {
 
     /** Next scripted status, or null once the script is used up. */
     Integer nextScripted() {
-        List<Integer> script = behavior.script();
+        Behavior own = behavior;
+        if (own == null) {
+            return null; // no override: the defaults apply, and defaults never have a script
+        }
+        List<Integer> script = own.script();
         int i = scriptIndex.getAndIncrement();
         return i < script.size() ? script.get(i) : null;
     }

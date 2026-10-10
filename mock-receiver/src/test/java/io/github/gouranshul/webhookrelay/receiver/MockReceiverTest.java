@@ -65,6 +65,11 @@ class MockReceiverTest {
     }
 
     @Test
+    void unconfiguredHookUsesDefaultsInsteadOfFailing() {
+        assertThat(deliver("never-configured-" + System.nanoTime(), "z", SECRET, now())).hasStatusOk();
+    }
+
+    @Test
     void countsDuplicateSuccessfulDeliveries() {
         state.configure("dedupe", Behavior.healthy());
         deliver("dedupe", "same-id", SECRET, now());
