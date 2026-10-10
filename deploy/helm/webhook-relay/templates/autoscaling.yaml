@@ -15,12 +15,15 @@ spec:
     name: {{ include "webhook-relay.fullname" . }}-dispatcher
   minReplicaCount: {{ .Values.autoscaling.keda.minReplicas }}
   maxReplicaCount: {{ .Values.autoscaling.keda.maxReplicas }}
+  {{- if eq (int .Values.autoscaling.keda.minReplicas) 0 }}
+  # Only meaningful when scaling to zero.
   pollingInterval: {{ .Values.autoscaling.keda.pollingInterval }}
   cooldownPeriod: {{ .Values.autoscaling.keda.cooldownPeriod }}
+  {{- end }}
   triggers:
     - type: kafka
       metadata:
-        bootstrapServers: {{ .Values.config.kafkaBootstrapServers | quote }}
+        bootstrapServers: {{ default .Values.config.kafkaBootstrapServers .Values.autoscaling.keda.bootstrapServers | quote }}
         consumerGroup: {{ .Values.autoscaling.keda.consumerGroup | quote }}
         topic: {{ .Values.autoscaling.keda.topic | quote }}
         lagThreshold: {{ .Values.autoscaling.keda.lagThreshold | quote }}
