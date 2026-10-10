@@ -27,18 +27,21 @@ kubectl apply --server-side -f "https://github.com/kedacore/keda/releases/downlo
 kubectl -n keda rollout status deploy/keda-operator --timeout=180s
 
 echo "== secrets and dependencies"
-API_TOKEN=$(openssl rand -hex 24)
-kubectl create secret generic relay-secrets \
+# Created once; re-runs keep it (Postgres is initialised with the first password).
+kubectl get secret relay-secrets >/dev/null 2>&1 || kubectl create secret generic relay-secrets \
   --from-literal=RELAY_SECRET_KEY="$(openssl rand -base64 32)" \
-  --from-literal=RELAY_API_TOKEN="$API_TOKEN" \
-  --from-literal=DB_PASSWORD="$(openssl rand -hex 16)" \
-  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  --from-literal=RELAY_API_TOKEN="$(openssl rand -hex 24)" \
+  --from-literal=DB_PASSWORD="$(openssl rand -hex 16)" >/dev/null
+API_TOKEN=$(kubectl get secret relay-secrets -o jsonpath='{.data.RELAY_API_TOKEN}' | base64 -d)
 kubectl apply -f deploy/kind/infra.yaml >/dev/null
 for d in postgres kafka redis mock-receiver; do kubectl rollout status deploy/$d --timeout=180s; done
 
 echo "== helm install"
 helm upgrade --install relay deploy/helm/webhook-relay \
   --set secrets.existingSecret=relay-secrets \
+  --set config.kafkaBootstrapServers=kafka.default.svc.cluster.local:9092 \
+  --set config.dbUrl=jdbc:postgresql://postgres.default.svc.cluster.local:5432/relay \
+  --set config.redisHost=redis.default.svc.cluster.local \
   --set config.allowPrivateNetworks=true \
   --set api.replicaCount=1 \
   --set autoscaling.keda.minReplicas=1 --set autoscaling.keda.maxReplicas=4 \
@@ -61,7 +64,7 @@ for i in $(seq 1 20); do
     -d "{\"type\":\"order.created\",\"data\":{\"order_id\":\"ord_$i\"}}" >/dev/null
 done
 for _ in $(seq 1 30); do
-  N=$(curl -sf "localhost:18080/v1/deliveries?status=SUCCEEDED&limit=200" -H "$AUTH" | grep -o '"status":"SUCCEEDED"' | wc -l)
+  N=$( (curl -sf "localhost:18080/v1/deliveries?status=SUCCEEDED&limit=200" -H "$AUTH" | grep -o '"status":"SUCCEEDED"' || true) | wc -l | tr -d ' ')
   [ "$N" -ge 20 ] && break
   sleep 2
 done

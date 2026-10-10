@@ -1,0 +1,53 @@
+# kind smoke test (2026-10-10, deploy/kind/smoke.sh, kind v0.33.0, Helm v4.3.0, KEDA v2.21.0)
+
+```
+== installing KEDA v2.21.0
+deployment "keda-operator" successfully rolled out
+== secrets and dependencies
+deployment "postgres" successfully rolled out
+deployment "kafka" successfully rolled out
+deployment "redis" successfully rolled out
+deployment "mock-receiver" successfully rolled out
+== helm install
+Release "relay" does not exist. Installing it now.
+NAME: relay
+LAST DEPLOYED: Sat Oct 10 19:04:47 2026
+NAMESPACE: default
+STATUS: deployed
+REVISION: 1
+DESCRIPTION: Install complete
+TEST SUITE: None
+NOTES:
+webhook-relay 0.1.0 is installed as release "relay".
+API:        relay-webhook-relay-api:8080
+Dispatcher: relay-webhook-relay-dispatcher:8081 (metrics only)
+Autoscaling: KEDA on consumer-group lag (webhook-dispatcher/webhook.deliveries)
+Try it:
+  kubectl port-forward svc/relay-webhook-relay-api 8080:8080
+  curl -H "Authorization: Bearer $RELAY_API_TOKEN" localhost:8080/v1/endpoints
+NAME                                                  SCALETARGETKIND      SCALETARGETNAME                  MIN   MAX   READY   ACTIVE   FALLBACK   PAUSED   TRIGGERS   AUTHENTICATIONS   AGE
+scaledobject.keda.sh/relay-webhook-relay-dispatcher   apps/v1.Deployment   relay-webhook-relay-dispatcher   1     4     True    False    False      False    kafka                        2m2s
+NAME                                                                          REFERENCE                                   TARGETS               MINPODS   MAXPODS   REPLICAS   AGE
+horizontalpodautoscaler.autoscaling/keda-hpa-relay-webhook-relay-dispatcher   Deployment/relay-webhook-relay-dispatcher   <unknown>/200 (avg)   1         4         1          2m2s
+NAME                                             READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/kafka                            1/1     1            1           3m1s
+deployment.apps/mock-receiver                    1/1     1            1           3m1s
+deployment.apps/postgres                         1/1     1            1           3m1s
+deployment.apps/redis                            1/1     1            1           3m1s
+deployment.apps/relay-webhook-relay-api          1/1     1            1           2m2s
+deployment.apps/relay-webhook-relay-dispatcher   1/1     1            1           2m2s
+NAME                                                  READY   STATUS    RESTARTS   AGE
+pod/kafka-84fd677484-gsqnq                            1/1     Running   0          3m1s
+pod/mock-receiver-7cc84b7b77-2zqw6                    1/1     Running   0          3m1s
+pod/postgres-55c668dfd-nsvzx                          1/1     Running   0          3m1s
+pod/redis-85c55d978b-4fhdm                            1/1     Running   0          3m1s
+pod/relay-webhook-relay-api-5c8dc995c8-vpspr          1/1     Running   0          2m2s
+pod/relay-webhook-relay-dispatcher-69f94b96fb-x7lhf   1/1     Running   0          2m2s
+== smoke test
+endpoint: "id":"ce3b3cc3-10b8-4c07-a229-1740d09d1d3f"
+succeeded deliveries: 20 / 20
+SMOKE TEST PASSED
+Deleting cluster "webhook-relay" ...
+Deleted nodes: ["webhook-relay-control-plane"]
+EXIT=0
+```

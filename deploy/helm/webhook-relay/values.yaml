@@ -106,6 +106,8 @@ autoscaling:
     lagThreshold: "200"
     pollingInterval: 15
     cooldownPeriod: 120
+    # KEDA runs in its own namespace: use a fully-qualified broker address here. Defaults to config.kafkaBootstrapServers.
+    bootstrapServers: ""
     # Consumer group = the @KafkaListener id.
     consumerGroup: webhook-dispatcher
     topic: webhook.deliveries
