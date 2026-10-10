@@ -1,0 +1,5 @@
+run: vt-100-r2  target rate: 100/s  hold: 3m
+requests: 19653  rate: 93.3/s  accepted: 19617
+failed: 0.000%  dropped iterations: 32
+publish latency ms: p50=27.0 p95=233.9 p99=464.6 max=1407.3
+thresholds: http_req_failed OK, checks OK, dropped_iterations OK, http_req_duration{name:publish} OK

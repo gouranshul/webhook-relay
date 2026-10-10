@@ -20,7 +20,7 @@ export RELAY_RETRY_MAX_DELAY=${RELAY_RETRY_MAX_DELAY:-2m}
 OUT=load/results
 mkdir -p "$OUT"
 
-psql() { timeout 120 docker compose exec -T postgres psql -U "${POSTGRES_USER:-relay}" -d "${POSTGRES_DB:-relay}" -At -F ' ' -c "$1"; }
+psql() { timeout -k 5 60 docker compose exec -T postgres psql -U "${POSTGRES_USER:-relay}" -d "${POSTGRES_DB:-relay}" -At -F ' ' -c "$1"; }
 prom() { curl -s --get "http://localhost:9090/api/v1/query" --data-urlencode "query=$1" | sed -E 's/.*"value":\[[^,]+,"([^"]+)".*/\1/;t;s/.*/n\/a/'; }
 
 echo "== $NAME: recreating relay services"
@@ -65,6 +65,11 @@ while :; do
   sleep 5
 done
 DRAINED=$(date +%s)
+if [ "$DRAIN_NOTE" != complete ]; then
+  { echo "# Deliveries still in progress when the drain timed out"; echo;
+    psql "SELECT d.id, d.status, d.attempt_count, d.updated_at, d.lease_until, d.last_error, (SELECT string_agg(attempt_number || ':' || outcome || '@' || to_char(attempted_at, 'HH24:MI:SS'), ' ' ORDER BY id) FROM delivery_attempts a WHERE a.delivery_id = d.id), (SELECT string_agg(o.id || ' published=' || coalesce(to_char(o.published_at, 'HH24:MI:SS'), 'no'), ' ') FROM outbox o WHERE o.delivery_id = d.id) FROM deliveries d WHERE d.status IN ('PENDING','IN_FLIGHT','RETRYING') LIMIT 50";
+    echo; docker compose logs --since 40m relay-dispatcher 2>&1 | grep -E " (WARN|ERROR) " | tail -100; } > "$OUT/$NAME-stuck.txt" 2>&1
+fi
 kill $SAMPLER 2>/dev/null || true
 
 case "$RAMP" in *m) RAMP_S=$(( ${RAMP%m} * 60 ));; *s) RAMP_S=${RAMP%s};; *) RAMP_S=$RAMP;; esac
@@ -76,6 +81,7 @@ RANGE="$((DRAINED - START + 60))s"
   echo "# Benchmark run: $NAME"
   echo
   echo "- Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "- Window (UTC): $(date -u -d @$START +%FT%TZ) to $(date -u -d @$DRAINED +%FT%TZ) (load + drain; a valid run has no host sleep in this window)"
   echo "- Settings: RATE=$RATE/s RAMP=$RAMP HOLD=$HOLD ENDPOINTS_PER_TYPE=$ENDPOINTS_PER_TYPE (3 event types)"
   echo "- Retry max delay: $RELAY_RETRY_MAX_DELAY"
   echo "- Dispatcher: VIRTUAL_THREADS_ENABLED=${VIRTUAL_THREADS_ENABLED:-true} EXECUTOR=${RELAY_DISPATCHER_EXECUTOR:-virtual} PLATFORM_POOL=${RELAY_DISPATCHER_PLATFORM_POOL_SIZE:-200} BULKHEAD=${RELAY_BULKHEAD_PER_ENDPOINT:-50}"
@@ -96,7 +102,7 @@ RANGE="$((DRAINED - START + 60))s"
   echo "deliveries succeeded/s during hold: $(psql "SELECT round(count(*) / greatest(1, $END - $HOLD_FROM)::numeric, 1) FROM deliveries WHERE status = 'SUCCEEDED' AND completed_at BETWEEN $WINDOW")"
   echo "accept->delivered latency, first-attempt successes (ms) p50/p95/p99/max: $(psql "SELECT concat_ws(' / ', round(percentile_cont(0.5) WITHIN GROUP (ORDER BY ms)), round(percentile_cont(0.95) WITHIN GROUP (ORDER BY ms)), round(percentile_cont(0.99) WITHIN GROUP (ORDER BY ms)), round(max(ms))) FROM (SELECT EXTRACT(EPOCH FROM completed_at - created_at) * 1000 AS ms FROM deliveries WHERE status = 'SUCCEEDED' AND attempt_count = 1 AND created_at BETWEEN $WINDOW) t")"
   echo "accept->delivered latency, all successes incl. retries (ms) p50/p95/p99: $(psql "SELECT concat_ws(' / ', round(percentile_cont(0.5) WITHIN GROUP (ORDER BY ms)), round(percentile_cont(0.95) WITHIN GROUP (ORDER BY ms)), round(percentile_cont(0.99) WITHIN GROUP (ORDER BY ms))) FROM (SELECT EXTRACT(EPOCH FROM completed_at - created_at) * 1000 AS ms FROM deliveries WHERE status = 'SUCCEEDED' AND created_at BETWEEN $WINDOW) t")"
-  echo "receiver: $(curl -s localhost:8090/admin/stats | sed -E 's/,"hooks".*//; s/[{}"]//g')"
+  echo "receiver (totals): $(curl -s localhost:8090/admin/stats | sed -E 's/"hooks":\{([^{}]|\{[^{}]*\})*\},?//; s/[{}"]//g; s/,$//')"
   echo '```'
   echo
   echo '## Dispatcher resources (Prometheus, over the run)'
