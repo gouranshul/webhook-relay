@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Shared multi-stage build for every service. Usage: docker build --build-arg MODULE=relay-api .
-FROM eclipse-temurin:25.0.4.1_1-jdk-noble AS build
+FROM eclipse-temurin:26.0.2.1_1-jdk-noble AS build
 ARG MODULE
 WORKDIR /src
 COPY mvnw pom.xml ./
@@ -19,7 +19,7 @@ RUN --mount=type=cache,target=/root/.m2 \
  && cp ${MODULE}/target/${MODULE}-*-exec.jar /app.jar \
  && java -Djarmode=tools -jar /app.jar extract --layers --launcher --destination /layers
 
-FROM eclipse-temurin:25.0.4.1_1-jre-alpine
+FROM eclipse-temurin:27_35-jre-alpine
 RUN addgroup -S relay && adduser -S -G relay -u 10001 relay
 WORKDIR /app
 COPY --from=build --chown=relay:relay /layers/dependencies/ ./
