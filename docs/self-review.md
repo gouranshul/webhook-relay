@@ -67,6 +67,13 @@ are immutable.
 | R3 | Timeouts | HTTP connect 2 s / request 10 s; Redis 500 ms; Kafka producer `max.block.ms` 10 s, `request.timeout.ms` 10 s, `delivery.timeout.ms` 30 s (added to the dispatcher, whose forwards relied on the 120 s default); Hikari connection 5–10 s; **pgjdbc `connectTimeout`/`socketTimeout` added** (a hung socket previously blocked a thread forever); outbox publish 10 s. |
 | R4 | Infrastructure errors burning delivery attempts | `DataAccessException` uses blocking retries (up to 2 min) instead of moving along the retry chain. |
 
+## Found by deploying to kind
+
+- The KEDA operator resolves the Kafka trigger address from its own namespace, so `kafka:9092` did not resolve and
+  the ScaledObject never became ready. The chart now accepts a fully-qualified `autoscaling.keda.bootstrapServers`.
+- The mock receiver threw a NullPointerException (HTTP 500) for any hook nobody had configured, which would have
+  made the README quickstart look broken. Fixed and covered by `MockReceiverTest`.
+
 ## Remaining known limitations
 
 - Deferrals (breaker open, bulkhead full, rate limited) consume retry-topic slots (ADR 0004); a delay topic is on the roadmap.
