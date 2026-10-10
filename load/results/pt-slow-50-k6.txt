@@ -1,0 +1,5 @@
+run: pt-slow-50  target rate: 50/s  hold: 3m
+requests: 9860  rate: 46.8/s  accepted: 9824
+failed: 0.000%  dropped iterations: 0
+publish latency ms: p50=13.0 p95=34.3 p99=67.4 max=482.9
+thresholds: http_req_duration{name:publish} OK, checks OK, http_req_failed OK, dropped_iterations OK

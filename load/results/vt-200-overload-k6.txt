@@ -1,0 +1,5 @@
+run: vt-200-overload  target rate: 200/s  hold: 3m
+requests: 38252  rate: 180.3/s  accepted: 38150
+failed: 0.173%  dropped iterations: 1083
+publish latency ms: p50=64.7 p95=2206.3 p99=3466.6 max=5422.4
+thresholds: checks OK, http_req_failed OK, dropped_iterations FAILED, http_req_duration{name:publish} FAILED
