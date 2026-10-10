@@ -1,16 +1,16 @@
-# ChaosTest output: final run (2026-10-09, part of ./mvnw verify, BUILD SUCCESS)
+# ChaosTest output: final run (2026-10-10, part of ./mvnw verify, BUILD SUCCESS)
 
 Each scenario: 20 events/s for 30 s, fan-out 3 (600 events, 1,800 deliveries), producer retries with the same Idempotency-Key.
 
-CHAOS kafka-restart: sent=600 accepted=600 clientRetries=0 slowestApiResponse=70ms peakOutboxPending=718 peakOutboxLag=14s | events=600 deliveries=1800 byStatus={SUCCEEDED=1800} attempts=1974 receiverRequests=1974 receiverDuplicates=0 succeededButNotReceived=0 | drained in 77s
-CHAOS postgres-5s-latency: sent=600 accepted=600 clientRetries=0 slowestApiResponse=20959ms peakOutboxPending=976 peakOutboxLag=1s | events=600 deliveries=1800 byStatus={SUCCEEDED=1800} attempts=2003 receiverRequests=2003 receiverDuplicates=0 succeededButNotReceived=0 | drained in 40s
-CHAOS receiver-503-60s: sent=600 accepted=600 clientRetries=0 slowestApiResponse=73ms peakOutboxPending=11 peakOutboxLag=0s | events=600 deliveries=1800 byStatus={FAILED=1, SUCCEEDED=1799} attempts=2022 receiverRequests=2022 receiverDuplicates=0 succeededButNotReceived=0 | drained in 197s
-CHAOS kafka-killed-45s+failing-receiver (lease-sweeper re-enqueued 150): sent=600 accepted=600 clientRetries=0 slowestApiResponse=52ms peakOutboxPending=1410 peakOutboxLag=59s | events=600 deliveries=1800 byStatus={SUCCEEDED=1800} attempts=2145 receiverRequests=2145 receiverDuplicates=0 succeededButNotReceived=0 | drained in 86s
+CHAOS kafka-restart: sent=600 accepted=600 clientRetries=0 slowestApiResponse=154ms peakOutboxPending=715 peakOutboxLag=15s | events=600 deliveries=1800 byStatus={SUCCEEDED=1800} attempts=2022 receiverRequests=2022 receiverDuplicates=0 succeededButNotReceived=0 | drained in 118s
+CHAOS postgres-5s-latency: sent=600 accepted=600 clientRetries=0 slowestApiResponse=20015ms peakOutboxPending=114 peakOutboxLag=5s | events=600 deliveries=1800 byStatus={SUCCEEDED=1800} attempts=2022 receiverRequests=2022 receiverDuplicates=0 succeededButNotReceived=0 | drained in 41s
+CHAOS receiver-503-60s: sent=600 accepted=600 clientRetries=0 slowestApiResponse=138ms peakOutboxPending=12 peakOutboxLag=0s | events=600 deliveries=1800 byStatus={SUCCEEDED=1800} attempts=2018 receiverRequests=2018 receiverDuplicates=0 succeededButNotReceived=0 | drained in 174s
+CHAOS kafka-killed-45s+failing-receiver (lease-sweeper re-enqueued 150): sent=600 accepted=600 clientRetries=0 slowestApiResponse=41ms peakOutboxPending=1409 peakOutboxLag=59s | events=600 deliveries=1800 byStatus={SUCCEEDED=1800} attempts=2159 receiverRequests=2159 receiverDuplicates=0 succeededButNotReceived=0 | drained in 79s
 
 Forwards that failed while Kafka was killed (logged 'Could not forward'): 150
 Lease sweeper log lines:
-  17:31:26.991 Re-enqueued 1 deliveries whose attempt lease expired
-  17:32:28.196 Re-enqueued 1 deliveries whose attempt lease expired
-  17:39:07.107 Re-enqueued 150 deliveries whose attempt lease expired
+  09:02:34.516 Re-enqueued 1 deliveries whose attempt lease expired
+  09:03:46.448 Re-enqueued 1 deliveries whose attempt lease expired
+  09:10:58.061 Re-enqueued 150 deliveries whose attempt lease expired
 
-[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 430.0 s -- in io.github.gouranshul.webhookrelay.e2e.ChaosTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 450.6 s -- in io.github.gouranshul.webhookrelay.e2e.ChaosTest

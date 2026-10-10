@@ -22,6 +22,8 @@ public class LeaseSweeper {
 
     private static final Logger log = LoggerFactory.getLogger(LeaseSweeper.class);
     private static final int BATCH = 500;
+    /** A delivery whose lease has expired this many times is treated as a poison pill and failed, not requeued. */
+    static final int MAX_ATTEMPTS = 20;
 
     private final JdbcClient jdbc;
     private final Counter requeued;
@@ -37,6 +39,10 @@ public class LeaseSweeper {
             initialDelayString = "${relay.dispatcher.lease-sweep-interval:10s}")
     public void sweep() {
         try {
+            int poisoned = failPoisonPills();
+            if (poisoned > 0) {
+                log.error("Failed {} deliveries whose attempt lease expired {} times", poisoned, MAX_ATTEMPTS);
+            }
             int total = 0;
             int n;
             do {
@@ -56,7 +62,7 @@ public class LeaseSweeper {
         return jdbc.sql("""
                         WITH expired AS (
                             SELECT id FROM deliveries
-                             WHERE status = 'IN_FLIGHT' AND lease_until < now()
+                             WHERE status = 'IN_FLIGHT' AND lease_until < now() AND attempt_count < ?
                              ORDER BY lease_until
                              LIMIT ?
                                FOR UPDATE SKIP LOCKED
@@ -69,7 +75,18 @@ public class LeaseSweeper {
                         )
                         INSERT INTO outbox (delivery_id, endpoint_id, shard)
                         SELECT id, endpoint_id, %s FROM requeued""".formatted(OutboxShards.SHARD_SQL))
-                .param(BATCH)
+                .params(MAX_ATTEMPTS, BATCH)
+                .update();
+    }
+
+    /** Fails deliveries that keep losing their lease (e.g. one that crashes the dispatcher every time). */
+    int failPoisonPills() {
+        return jdbc.sql("""
+                        UPDATE deliveries
+                           SET status = 'FAILED', lease_until = NULL, completed_at = now(), updated_at = now(),
+                               last_error = 'attempt lease expired ' || attempt_count || ' times; giving up'
+                         WHERE status = 'IN_FLIGHT' AND lease_until < now() AND attempt_count >= ?""")
+                .param(MAX_ATTEMPTS)
                 .update();
     }
 }

@@ -19,6 +19,20 @@ class LeaseSweeperTest extends DispatcherIntegrationTest {
     LeaseSweeper sweeper;
 
     @Test
+    void failsAPoisonPillInsteadOfRequeueingItForever() {
+        TestEndpoint endpoint = endpoint(Behavior.healthy());
+        DeliveryMessage poison = insertDelivery(endpoint, "order.created", "{\"o\":3}");
+        jdbc.sql("UPDATE deliveries SET status = 'IN_FLIGHT', attempt_count = ?, lease_until = now() - interval '1 second' WHERE id = ?")
+                .params(LeaseSweeper.MAX_ATTEMPTS, poison.deliveryId()).update();
+
+        sweeper.sweep();
+
+        assertThat(status(poison.deliveryId())).isEqualTo(DeliveryStatus.FAILED);
+        assertThat(jdbc.sql("SELECT count(*) FROM outbox WHERE delivery_id = ?")
+                .param(poison.deliveryId()).query(Long.class).single()).isZero();
+    }
+
+    @Test
     void reenqueuesDeliveriesWhoseLeaseExpired() {
         TestEndpoint endpoint = endpoint(Behavior.healthy());
         DeliveryMessage orphan = insertDelivery(endpoint, "order.created", "{\"o\":1}");

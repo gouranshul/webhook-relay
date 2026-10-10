@@ -20,7 +20,7 @@ export RELAY_RETRY_MAX_DELAY=${RELAY_RETRY_MAX_DELAY:-2m}
 OUT=load/results
 mkdir -p "$OUT"
 
-psql() { docker compose exec -T postgres psql -U "${POSTGRES_USER:-relay}" -d "${POSTGRES_DB:-relay}" -At -F ' ' -c "$1"; }
+psql() { timeout 120 docker compose exec -T postgres psql -U "${POSTGRES_USER:-relay}" -d "${POSTGRES_DB:-relay}" -At -F ' ' -c "$1"; }
 prom() { curl -s --get "http://localhost:9090/api/v1/query" --data-urlencode "query=$1" | sed -E 's/.*"value":\[[^,]+,"([^"]+)".*/\1/;t;s/.*/n\/a/'; }
 
 echo "== $NAME: recreating relay services"
@@ -55,11 +55,13 @@ MSYS_NO_PATHCONV=1 docker run --rm --network webhook-relay_default -v "$HOST_DIR
 END=$(date +%s)
 
 echo "== $NAME: waiting for deliveries to drain"
-DRAIN_START=$(date +%s)
+# PARKED deliveries belong to an auto-paused endpoint and wait for an operator, so they do not count as in progress.
+DRAIN_DEADLINE=$(( $(date +%s) + 1800 ))
+DRAIN_NOTE="complete"
 while :; do
-  PENDING=$(psql "SELECT count(*) FROM deliveries WHERE status IN ('PENDING','IN_FLIGHT','RETRYING','PARKED')")
+  PENDING=$(psql "SELECT count(*) FROM deliveries WHERE status IN ('PENDING','IN_FLIGHT','RETRYING')" || echo "?")
   [ "$PENDING" = 0 ] && break
-  [ $(( $(date +%s) - DRAIN_START )) -gt 1800 ] && { echo "drain timeout with $PENDING pending"; break; }
+  if [ "$(date +%s)" -gt "$DRAIN_DEADLINE" ]; then DRAIN_NOTE="TIMED OUT after 30 min with $PENDING deliveries still in progress"; break; fi
   sleep 5
 done
 DRAINED=$(date +%s)
@@ -79,7 +81,7 @@ RANGE="$((DRAINED - START + 60))s"
   echo "- Dispatcher: VIRTUAL_THREADS_ENABLED=${VIRTUAL_THREADS_ENABLED:-true} EXECUTOR=${RELAY_DISPATCHER_EXECUTOR:-virtual} PLATFORM_POOL=${RELAY_DISPATCHER_PLATFORM_POOL_SIZE:-200} BULKHEAD=${RELAY_BULKHEAD_PER_ENDPOINT:-50}"
   echo "- Receiver: failure rate ${RECEIVER_FAILURE_RATE:-0.10}, latency ${RECEIVER_MIN_LATENCY_MS:-50}-${RECEIVER_MAX_LATENCY_MS:-200} ms"
   echo "- k6 exit code: $K6_STATUS (non-zero means a threshold failed)"
-  echo "- Drain after load: $((DRAINED - END)) s"
+  echo "- Drain after load: $((DRAINED - END)) s ($DRAIN_NOTE)"
   echo
   echo '## k6'
   echo '```'

@@ -44,7 +44,7 @@ public class RetryForwarder {
                 if (current == null) {
                     // Created lazily: the resolver only knows the topic chain once the listener is registered.
                     DeadLetterPublishingRecovererFactory factory = new DeadLetterPublishingRecovererFactory(resolver);
-                    factory.setHeadersFunction(scheduling::dueTimestampHeader);
+                    scheduling.configure(factory);
                     current = factory.create(MAIN_LISTENER_ID);
                     recoverer = current;
                 }

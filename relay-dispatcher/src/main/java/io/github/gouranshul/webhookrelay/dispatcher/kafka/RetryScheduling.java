@@ -46,7 +46,19 @@ public class RetryScheduling extends RetryTopicConfigurationSupport {
 
     @Override
     protected Consumer<DeadLetterPublishingRecovererFactory> configureDeadLetterPublishingContainerFactory() {
-        return factory -> factory.setHeadersFunction(this::dueTimestampHeader);
+        return this::configure;
+    }
+
+    /**
+     * Applied to every recoverer, the framework's and {@link RetryForwarder}'s. By default a record is forwarded to
+     * the SAME partition number in the retry topic, which does not exist when the retry topics have fewer partitions
+     * than the main topic (12 vs 48 here): the send times out and the record cycles through the lease sweeper. With
+     * no explicit partition the producer partitions by key (endpoint id), which works for any partition counts and
+     * keeps an endpoint's retries together.
+     */
+    void configure(DeadLetterPublishingRecovererFactory factory) {
+        factory.setHeadersFunction(this::dueTimestampHeader);
+        factory.setPartitionResolver((record, topic) -> null);
     }
 
     @Override
