@@ -145,10 +145,12 @@ the receiver. These run on every `./mvnw verify` ([latest output](load/results/c
 
 ## Dashboard
 
-> **Screenshot placeholder.** `docker compose up`, run `RATE=60 load/run-benchmark.sh demo`, then open
-> <http://localhost:3000> → dashboard **webhook-relay**: throughput, success rate, p50/p95/p99 attempt latency,
-> retries by attempt number, DLT rate, outbox lag, consumer lag, circuit-breaker states, in-flight attempts and
-> dispatcher heap. Save it as `docs/images/grafana-dashboard.png` and replace this note.
+![Grafana dashboard: throughput, success rate, latency percentiles, retries, deferrals, outbox and Kafka lag, circuit breakers, in-flight attempts, heap](docs/images/grafana-dashboard.png)
+
+*The provisioned dashboard during a 60 events/s demo load (fan-out 4, receiver failing 10 % of requests with 503).
+Retries by attempt number track the injected failures; one endpoint's circuit breaker opened briefly around 05:54 and
+its records were deferred instead of calling it. Illustrative only: the published numbers are in
+[docs/benchmarks.md](docs/benchmarks.md).*
 
 ## Design decisions
 
