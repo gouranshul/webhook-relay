@@ -152,7 +152,7 @@ services:
       - "16686:16686"
 
   prometheus:
-    image: prom/prometheus:v3.15.0
+    image: prom/prometheus:v3.15.1
     ports:
       - "9090:9090"
     volumes:
